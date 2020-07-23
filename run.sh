@@ -67,7 +67,7 @@ then
     echo "Ref Barcode: ${REF_BARCODE}"
     echo "===================================="
 
-    VCF_PATH=$(grep "${REF_BARCODE}-${REF_SAMPLE}_" snp)
+    VCF_PATH=$(grep "${REF_BARCODE}-" snp)
 
     if [ $? -eq 0 ];
     then
@@ -133,7 +133,7 @@ then
       rm -rf workdir
 
     else
-      echo "- No SNP vcf found (${REF_BARCODE}-${REF_SAMPLE}_)"
+      echo "- No SNP vcf found (by matching with ${REF_BARCODE}-)"
     fi
   done
 fi
