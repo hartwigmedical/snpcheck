@@ -8,14 +8,14 @@ function publishToTurquoise() {
       "type": "snp_check.complete", \
       "subjects": [ \
         { \
-          "name": '"$status"', \
+          "name": '"$sample"', \
           "type": "sample" \
         } \
       ], \
       "labels": [ \
         {
           "name": "status", \
-          "value": "'$sample'" \
+          "value": "'$status'" \
         } \
       ] \
     }'
