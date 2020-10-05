@@ -1,5 +1,13 @@
 #!/bin/bash
 
+function publishToTurquoise() {
+    status=$1
+    sample=$2
+    timestamp="$(date -u "+%Y-%m-%dT%H:%M:%SZ[UTC]")"
+    event=$(cat event.json | sed -e "s/STATUS/$status/g" -e "s/SAMPLE/$sample/g" -e "s/TIMESTAMP/$timestamp/g")
+    gcloud pubsub topics publish turquoise.events --message "$event" --project hmf-pipeline-prod-e45b00f2
+}
+
 echo ""
 echo ""
 
@@ -54,6 +62,7 @@ then
     RUN_ID=$(jq -r .[$ID].id queue)
     BUCKET=$(jq -r .[$ID].bucket queue)
     REF_SAMPLE=$(jq -r .[$ID].set.ref_sample queue)
+    TUMOR_SAMPLE=$(jq -r .[$ID].set.tumor_sample queue)
 
     # NOTE: This is assuming that the third part of the set name is the reference barcode. This is to support non FR barcodes, ideally this should actually make an API call that follows the run to the set and then directly loads the reference sample, but when I was writing this I didn't have the time to actually do that and we were on a bit of busy work. If HMF ever create a set without the barcode in the third slot this will break!
     REF_BARCODE=$(echo ${SET_NAME} | awk -F _ '{print $3}')
@@ -110,6 +119,7 @@ then
           gcloud config set account hmf-snpcheck@hmf-pipeline-prod-e45b00f2.iam.gserviceaccount.com
           gsutil cp workdir/output "gs://hmf-snpcheck/snpchecklogs/${SET_NAME}-$(date +%Y%m%d_%H%M%S).txt"
 
+
           if [ $? -ne 0 ];
           then
             echo "- Worklog upload failure"
@@ -120,7 +130,7 @@ then
               echo http --ignore-stdin PUT hmfapi/hmf/v1/runs/${RUN_ID} status=${STATUS}
             else
               http --ignore-stdin PUT hmfapi/hmf/v1/runs/${RUN_ID} status=${STATUS}
-              # http --ignore-stdin POST text="${SET_NAME} was SnpChecked and ${STATUS}"
+              publishToTurquoise ${STATUS} ${TUMOR_SAMPLE}
             fi
           fi
         else
