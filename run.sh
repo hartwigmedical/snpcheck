@@ -3,22 +3,8 @@
 function publishToTurquoise() {
     status=$1
     sample=$2
-    event='{ \
-      "timestamp": "%s", \
-      "type": "snp_check.complete", \
-      "subjects": [ \
-        { \
-          "name": '"$sample"', \
-          "type": "sample" \
-        } \
-      ], \
-      "labels": [ \
-        {
-          "name": "status", \
-          "value": "'$status'" \
-        } \
-      ] \
-    }'
+    timestamp="$(date -u "+%Y-%m-%dT%H:%M:%SZ[UTC]")"
+    event=$(cat event.json | sed -e "s/STATUS/$status/g" -e "s/SAMPLE/$sample/g" -e "s/TIMESTAMP/$timestamp/g")
     gcloud pubsub topics publish turquoise.events --message "$event" --project hmf-pipeline-prod-e45b00f2
 }
 
