@@ -1,6 +1,6 @@
 {
   "timestamp": "TIMESTAMP",
-  "type": "snp_check.complete",
+  "type": "snp_check.completed",
   "subjects": [
     {
       "name": "SAMPLE",
