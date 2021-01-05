@@ -108,10 +108,14 @@ then
             echo "" >> workdir/output
             echo "- Detected success" >> workdir/output
             STATUS=Validated
+            RESULT_CATEGORY=Success
+            RESULT_TYPE=Success
           else
             echo "" >> workdir/output
             echo "- Detected failure" >> workdir/output
-            STATUS=Failed
+            STATUS=Finished
+            RESULT_CATEGORY=QCFailure
+            RESULT_TYPE=SnpCheck
           fi
 
           cat workdir/output
@@ -125,13 +129,8 @@ then
             echo "- Worklog upload failure"
             exit
           else
-            if [ "$TESTMODE" ];
-            then
-              echo http --ignore-stdin PUT hmfapi/hmf/v1/runs/${RUN_ID} status=${STATUS}
-            else
-              http --ignore-stdin PUT hmfapi/hmf/v1/runs/${RUN_ID} status=${STATUS}
-              publishToTurquoise ${STATUS} ${TUMOR_SAMPLE}
-            fi
+            curl -d "{\"status\": \"${STATUS}\", \"result\": { \"category\": \"${RESULT_CATEGORY}\", \"type\": \"${RESULT_TYPE}\"}}" -H \"Content-Type: application/json\" -X PATCH http://hmfapi/hmf/v1/runs/${RUN_ID}
+            publishToTurquoise ${STATUS} ${TUMOR_SAMPLE}
           fi
         else
           echo "- REF vcf download failed (gs://${BUCKET}/${SET_NAME}/${REF_SAMPLE})"
