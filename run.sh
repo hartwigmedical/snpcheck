@@ -129,8 +129,7 @@ then
             echo "- Worklog upload failure"
             exit
           else
-            echo curl -d "\"{\"status\": \"${STATUS}\", \"result\": { \"category\": \"${RESULT_CATEGORY}\", \"type\": \"${RESULT_TYPE}\"}}\"" -H "Content-Type: application/json" -X PATCH http://hmfapi/hmf/v1/runs/${RUN_ID}
-            curl -d "\"{\"status\": \"${STATUS}\", \"result\": { \"category\": \"${RESULT_CATEGORY}\", \"type\": \"${RESULT_TYPE}\"}}\"" -H "Content-Type: application/json" -X PATCH http://hmfapi/hmf/v1/runs/${RUN_ID}
+            curl -d '{"status": "'$STATUS'", "result": { "category": "'$RESULT_CATEGORY'", "type": "'$RESULT_TYPE'"}}' -H "Content-Type: application/json" -X PATCH http://localhost:5002/hmf/v1/runs/${RUN_ID}
             publishToTurquoise ${STATUS} ${TUMOR_SAMPLE}
           fi
         else
