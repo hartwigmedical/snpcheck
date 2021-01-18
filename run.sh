@@ -26,8 +26,8 @@ do
 done
 
 # Get SnpCheck runs
-http GET hmfapi/hmf/v1/runs?status=Finished&ini=Somatic.ini > queue
-http GET hmfapi/hmf/v1/runs?status=Finished&ini=Single.ini >> queue
+http GET "hmfapi/hmf/v1/runs?status=Finished&ini=Somatic.ini" > queue
+http GET "hmfapi/hmf/v1/runs?status=Finished&ini=Single.ini" >> queue
 
 if [ $? -ne 0 ];
 then
