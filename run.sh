@@ -26,7 +26,8 @@ do
 done
 
 # Get SnpCheck runs
-http GET hmfapi/hmf/v1/runs?status=SnpCheck > queue
+http GET hmfapi/hmf/v1/runs?status=Finished&ini=Somatic.ini > queue
+http GET hmfapi/hmf/v1/runs?status=Finished&ini=Single.ini >> queue
 
 if [ $? -ne 0 ];
 then
@@ -108,14 +109,10 @@ then
             echo "" >> workdir/output
             echo "- Detected success" >> workdir/output
             STATUS=Validated
-            RESULT_CATEGORY=Success
-            RESULT_TYPE=Success
           else
             echo "" >> workdir/output
             echo "- Detected failure" >> workdir/output
-            STATUS=Finished
-            RESULT_CATEGORY=QCFailure
-            RESULT_TYPE=SnpCheck
+            STATUS=Failed
           fi
 
           cat workdir/output
@@ -129,7 +126,10 @@ then
             echo "- Worklog upload failure"
             exit
           else
-            curl -d '{"status": "'$STATUS'", "result": { "category": "'$RESULT_CATEGORY'", "type": "'$RESULT_TYPE'"}}' -H "Content-Type: application/json" -X PATCH http://hmfapi/hmf/v1/runs/${RUN_ID}
+            curl -d '{"status": "'$STATUS'"}' -H "Content-Type: application/json" -X PATCH http://hmfapi/hmf/v1/runs/${RUN_ID}
+            if [ $STATUS = "Failed" ];then
+              curl -d '{"failure": { "type": "QCFailure", "source": "SnpCheck"}}' -H "Content-Type: application/json" -X PATCH http://hmfapi/hmf/v1/runs/${RUN_ID}
+            fi
             publishToTurquoise ${STATUS} ${TUMOR_SAMPLE}
           fi
         else
