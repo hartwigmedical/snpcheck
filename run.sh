@@ -10,7 +10,7 @@ function publishToTurquoise() {
 
 function checkRuns() {
     queue=$1
-    SIZE=$(jq length queue)
+    SIZE=$(jq length $queue)
 
     echo "- Found $SIZE possible runs to SnpCheck"
 
@@ -28,17 +28,17 @@ function checkRuns() {
       then
         echo "- GS ls snpcheckvcfs failed"
         cat snp
-        exit
+        exit 1
       fi
 
       for ID in $(seq 1 $SIZE);
       do
         ID=$((ID-1))
-        SET_NAME=$(jq -r .[$ID].set.name queue)
-        RUN_ID=$(jq -r .[$ID].id queue)
-        BUCKET=$(jq -r .[$ID].bucket queue)
-        REF_SAMPLE=$(jq -r .[$ID].set.ref_sample queue)
-        TUMOR_SAMPLE=$(jq -r .[$ID].set.tumor_sample queue)
+        SET_NAME=$(jq -r .[$ID].set.name $queue)
+        RUN_ID=$(jq -r .[$ID].id $queue)
+        BUCKET=$(jq -r .[$ID].bucket $queue)
+        REF_SAMPLE=$(jq -r .[$ID].set.ref_sample $queue)
+        TUMOR_SAMPLE=$(jq -r .[$ID].set.tumor_sample $queue)
 
         # NOTE: This is assuming that the third part of the set name is the reference barcode. This is to support non FR barcodes, ideally this should actually make an API call that follows the run to the set and then directly loads the reference sample, but when I was writing this I didn't have the time to actually do that and we were on a bit of busy work. If HMF ever create a set without the barcode in the third slot this will break!
         REF_BARCODE=$(echo ${SET_NAME} | awk -F _ '{print $3}')
