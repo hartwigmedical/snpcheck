@@ -22,6 +22,8 @@ spec:
                 - /snpcheck_secrets/bootstrap-key.json
                 - --database_private_key
                 - /database_secrets/bootstrap-key.json
+                - --project
+                - hmf-pipeline-development
               command:
                 - /snpcheck.sh
               image: eu.gcr.io/hmf-build/snpcheck
