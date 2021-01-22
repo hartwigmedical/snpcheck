@@ -143,7 +143,7 @@ done
 
 # Get SnpCheck runs
 http GET "hmfapi/hmf/v1/runs?status=Finished&ini=Somatic.ini" > somatic_queue
-http GET "hmfapi/hmf/v1/runs?status=Finished&ini=Single.ini" > single_queue
+http GET "hmfapi/hmf/v1/runs?status=Finished&ini=SingleSample.ini" > single_queue
 
 if [ $? -ne 0 ];
 then
