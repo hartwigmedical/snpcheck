@@ -90,8 +90,10 @@ public class SnpCheck {
         Optional<Blob> maybeRefVcf =
                 Optional.ofNullable(pipelineStorage.get(run.getBucket())).flatMap(b -> Optional.ofNullable(b.get(refVcfPath)));
         if (maybeRefVcf.isPresent()) {
-            LOGGER.info("Found both a validation and reference VCF for set [{}]", run.getSet().getName());
             Blob refVcf = maybeRefVcf.get();
+            LOGGER.info("Found both a validation and reference VCF for set [{}]", run.getSet().getName());
+            LOGGER.info("Validation [{}]", valVcf.getName());
+            LOGGER.info("Reference [{}]", refVcf.getName());
             VcfComparison.Result result = vcfComparison.compare(run, refVcf, valVcf);
             if (result.equals(VcfComparison.Result.PASS)) {
                 LOGGER.info("Set [{}] was successfully snpchecked.", run.getSet().getName());
