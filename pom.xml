@@ -23,6 +23,7 @@
         <slf4j-log4j12.version>1.7.28</slf4j-log4j12.version>
         <google-cloud-bom.version>0.145.0</google-cloud-bom.version>
         <hmf-api.version>1.1.2</hmf-api.version>
+        <pipeline5.version>5.18.1943</pipeline5.version>
     </properties>
 
     <repositories>
@@ -49,6 +50,11 @@
             <groupId>com.hartwig.api</groupId>
             <artifactId>java-client</artifactId>
             <version>${hmf-api.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.hartwig</groupId>
+            <artifactId>cluster</artifactId>
+            <version>${pipeline5.version}</version>
         </dependency>
 
         <dependency>

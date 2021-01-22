@@ -6,6 +6,7 @@ import java.util.Optional;
 import java.util.stream.StreamSupport;
 
 import com.google.api.gax.paging.Page;
+import com.google.cloud.pubsub.v1.Publisher;
 import com.google.cloud.storage.Blob;
 import com.google.cloud.storage.Bucket;
 import com.google.cloud.storage.Storage;
@@ -20,6 +21,7 @@ import com.hartwig.api.model.Sample;
 import com.hartwig.api.model.SampleType;
 import com.hartwig.api.model.Status;
 import com.hartwig.api.model.UpdateRun;
+import com.hartwig.snpcheck.turquoise.SnpCheckEvent;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -35,14 +37,16 @@ public class SnpCheck {
     private final Bucket snpcheckBucket;
     private final Storage pipelineStorage;
     private final VcfComparison vcfComparison;
+    private final Publisher publisher;
 
     public SnpCheck(final RunApi runs, final SampleApi samples, final Bucket snpcheckBucket, final Storage pipelineStorage,
-            final VcfComparison vcfComparison) {
+            final VcfComparison vcfComparison, final Publisher publisher) {
         this.runs = runs;
         this.samples = samples;
         this.snpcheckBucket = snpcheckBucket;
         this.pipelineStorage = pipelineStorage;
         this.vcfComparison = vcfComparison;
+        this.publisher = publisher;
     }
 
     public void run() {
@@ -55,11 +59,13 @@ public class SnpCheck {
         LOGGER.info("Found [{}] somatic and [{}] single runs to check", somatics.size(), singles.size());
         for (Run run : Iterables.concat(singles, somatics)) {
             Optional<Sample> maybeRefSample = onlyOne(samples, run.getSet(), SampleType.REF);
-            if (maybeRefSample.isPresent()) {
+            Optional<Sample> maybeTumorSample = onlyOne(samples, run.getSet(), SampleType.TUMOR);
+            if (maybeRefSample.isPresent() && maybeTumorSample.isPresent()) {
                 Sample refSample = maybeRefSample.get();
+                Sample tumorSample = maybeTumorSample.get();
                 Optional<Blob> maybeValVcf = findValidationVcf(valVcfs, refSample);
                 if (maybeValVcf.isPresent()) {
-                    doComparison(run, refSample, maybeValVcf.get());
+                    doComparison(run, refSample, tumorSample, maybeValVcf.get());
                 } else {
                     LOGGER.info("No validation VCF available for set [{}]. Will be checked again next time snpcheck runs",
                             run.getSet().getName());
@@ -79,7 +85,7 @@ public class SnpCheck {
         return StreamSupport.stream(valVcfs.spliterator(), false).filter(vcf -> vcf.getName().contains(refSample.getBarcode())).findFirst();
     }
 
-    private void doComparison(final Run run, final Sample refSample, final Blob valVcf) {
+    private void doComparison(final Run run, final Sample refSample, final Sample tumorSample, final Blob valVcf) {
         String refVcfPath = String.format("%s/%s/snp_genotype/snp_genotype_output.vcf", run.getSet().getName(), refSample.getName());
         Optional<Blob> maybeRefVcf =
                 Optional.ofNullable(pipelineStorage.get(run.getBucket())).flatMap(b -> Optional.ofNullable(b.get(refVcfPath)));
@@ -94,6 +100,13 @@ public class SnpCheck {
                 LOGGER.info("Set [{}] failed snpcheck.", run.getSet().getName());
                 failed(run, RunFailure.TypeEnum.QCFAILURE);
             }
+            SnpCheckEvent.builder()
+                    .publisher(publisher)
+                    .sample(tumorSample.getName())
+                    .result(result.name().toLowerCase())
+                    .build()
+                    .publish();
+
         } else {
             LOGGER.warn("Set [{}] had no VCF at [{}]", run.getSet().getName(), refVcfPath);
             failed(run, RunFailure.TypeEnum.TECHNICALFAILURE);

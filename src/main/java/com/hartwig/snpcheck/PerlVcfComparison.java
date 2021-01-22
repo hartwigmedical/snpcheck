@@ -16,8 +16,6 @@ import org.slf4j.LoggerFactory;
 
 public class PerlVcfComparison implements VcfComparison {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(PerlVcfComparison.class);
-
     @Override
     public Result compare(final Run run, final Blob refVcf, final Blob valVcf) {
         Path workingDirectory = Paths.get(run.getId() + "-working");

@@ -4,8 +4,10 @@ import java.io.FileInputStream;
 import java.util.concurrent.Callable;
 
 import com.google.auth.oauth2.GoogleCredentials;
+import com.google.cloud.pubsub.v1.Publisher;
 import com.google.cloud.storage.Bucket;
 import com.google.cloud.storage.StorageOptions;
+import com.google.pubsub.v1.ProjectTopicName;
 import com.hartwig.api.HmfApi;
 
 import org.slf4j.Logger;
@@ -33,6 +35,10 @@ public class SnpCheckMain implements Callable<Integer> {
                         defaultValue = "hmf-snpcheck",
                         description = "Bucket in which the snpcheck vcfs are uploaded")
     private String snpcheckBucketName;
+    @CommandLine.Option(names = { "--project" },
+                        required = true,
+                        description = "Project in which the snpcheck is running")
+    private String project;
 
     @Override
     public Integer call() {
@@ -46,11 +52,15 @@ public class SnpCheckMain implements Callable<Integer> {
                 LOGGER.error("Bucket [{}] does not exist. ", snpcheckBucketName);
                 return 1;
             }
+            Publisher publisher = Publisher.newBuilder(ProjectTopicName.of(project, "turquoise.events"))
+                    .setCredentialsProvider(() -> snpCheckCredentials)
+                    .build();
             new SnpCheck(hmfApi.runs(),
                     hmfApi.samples(),
                     snpcheckBucket,
                     StorageOptions.newBuilder().setCredentials(databaseCredentials).build().getService(),
-                    new PerlVcfComparison()).run();
+                    new PerlVcfComparison(),
+                    publisher).run();
             return 0;
         } catch (Exception e) {
             LOGGER.error("Exception while running snpcheck", e);
