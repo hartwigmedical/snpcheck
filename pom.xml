@@ -22,6 +22,7 @@
         <picocli.version>4.2.0</picocli.version>
         <slf4j-log4j12.version>1.7.28</slf4j-log4j12.version>
         <google-cloud-bom.version>0.145.0</google-cloud-bom.version>
+        <hmf-api.version>1.1.2</hmf-api.version>
     </properties>
 
     <repositories>
@@ -47,7 +48,7 @@
         <dependency>
             <groupId>com.hartwig.api</groupId>
             <artifactId>java-client</artifactId>
-            <version>local-SNAPSHOT</version>
+            <version>${hmf-api.version}</version>
         </dependency>
 
         <dependency>
