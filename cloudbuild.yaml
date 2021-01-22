@@ -14,7 +14,7 @@ steps:
     args:
       - run
       - --filename=k8/hmf-pipeline-development/deploy.yaml
-      - --image=eu.gcr.io/$PROJECT_ID/snpchek:$SHORT_SHA
+      - --image=eu.gcr.io/$PROJECT_ID/snpcheck:$SHORT_SHA
       - --project=hmf-pipeline-development
       - --location=europe-west4
       - --cluster=standard-cluster-1
