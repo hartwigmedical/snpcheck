@@ -18,12 +18,10 @@ public class SnpCheckMain implements Callable<Integer> {
     private static final Logger LOGGER = LoggerFactory.getLogger(SnpCheckMain.class);
 
     @CommandLine.Option(names = { "--snpcheck_private_key" },
-                        required = true,
                         defaultValue = "/snpcheck_secrets/service_account.json",
                         description = "Path to private key for the snpcheck service account")
     private String snpcheckPrivateKeyPath;
     @CommandLine.Option(names = { "--database_private_key" },
-                        required = true,
                         defaultValue = "/database_secrets/service_account.json",
                         description = "Path to private key for the database service account")
     private String databasePrivateKeyPath;
