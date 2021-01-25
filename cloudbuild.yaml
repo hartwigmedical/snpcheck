@@ -1,0 +1,22 @@
+steps:
+  - name: 'maven:3-jdk-11'
+    id: 'Building application'
+    entrypoint: mvn
+    args: ['install', '-B']
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'Building image'
+    args: ['build', '-t', 'eu.gcr.io/$PROJECT_ID/snpcheck:$SHORT_SHA', '.']
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'Push image'
+    entrypoint: '/bin/bash'
+    args: ['-c', "docker push eu.gcr.io/$PROJECT_ID/snpcheck:$SHORT_SHA"]
+  - name: "gcr.io/cloud-builders/gke-deploy"
+    args:
+      - run
+      - --filename=k8/hmf-pipeline-development/deploy.yaml
+      - --image=eu.gcr.io/$PROJECT_ID/snpcheck:$SHORT_SHA
+      - --project=hmf-pipeline-development
+      - --location=europe-west4
+      - --cluster=standard-cluster-1
+images:
+  - eu.gcr.io/$PROJECT_ID/snpcheck
