@@ -44,5 +44,7 @@ steps:
       - --project=hmf-pipeline-development
       - --location=europe-west4
       - --cluster=standard-cluster-1
+options:
+  machineType: 'N1_HIGHCPU_32'
 images:
   - eu.gcr.io/$PROJECT_ID/snpcheck
