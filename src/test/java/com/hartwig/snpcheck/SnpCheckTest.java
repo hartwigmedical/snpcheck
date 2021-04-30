@@ -33,6 +33,8 @@ import com.hartwig.api.model.Sample;
 import com.hartwig.api.model.SampleType;
 import com.hartwig.api.model.Status;
 import com.hartwig.api.model.UpdateRun;
+import com.hartwig.events.ImmutablePipelineStaged;
+import com.hartwig.events.PipelineStaged;
 
 import org.junit.Before;
 import org.junit.Test;
@@ -41,7 +43,9 @@ import org.mockito.ArgumentCaptor;
 public class SnpCheckTest {
 
     private static final long SET_ID = 2L;
-    private static final Run RUN = new Run().bucket("bucket").id(1L).set(new RunSet().name("set").refSample("ref").id(SET_ID));
+    public static final long RUN_ID = 1L;
+    private static final Run RUN =
+            new Run().bucket("bucket").id(RUN_ID).set(new RunSet().name("set").refSample("ref").id(SET_ID)).ini(Ini.SOMATIC_INI.getValue());
     private static final String BARCODE = "barcode";
     private static final Sample REF_SAMPLE = new Sample().barcode(BARCODE).name("sampler");
     private static final Sample TUMOR_SAMPLE = new Sample().barcode(BARCODE).name("samplet");
@@ -64,50 +68,61 @@ public class SnpCheckTest {
         //noinspection unchecked
         when(publisher.publish(any())).thenReturn(mock(ApiFuture.class));
         victim = new SnpCheck(runApi, sampleApi, snpcheckBucket, pipelineStorage, vcfComparison, publisher);
-        when(runApi.list(Status.FINISHED, Ini.SINGLE_INI)).thenReturn(emptyList());
-        when(runApi.list(Status.FINISHED, Ini.SOMATIC_INI)).thenReturn(emptyList());
-    }
-
-    @Test
-    public void noFinishedSomaticOrSingleRunsDoesNothing() {
-        victim.run();
-        verify(runApi, never()).update(any(), any());
     }
 
     @Test
     public void finishedSomaticRunNoRefSampleMarksRunTechnicalFail() {
-        when(runApi.list(Status.FINISHED, Ini.SOMATIC_INI)).thenReturn(singletonList(RUN));
-        when(sampleApi.list(null, SET_ID, SampleType.REF)).thenReturn(emptyList());
-        victim.run();
+        when(runApi.get(RUN.getId())).thenReturn(RUN);
+        when(sampleApi.list(null, null, null, SET_ID, SampleType.REF, null)).thenReturn(emptyList());
+        victim.handle(stagedEvent(PipelineStaged.Analysis.TERTIARY, PipelineStaged.OutputTarget.PATIENT_REPORT));
         assertTechnicalFailure();
     }
 
     @Test
+    public void filtersSecondaryAnalysis() {
+        victim.handle(stagedEvent(PipelineStaged.Analysis.SECONDARY, PipelineStaged.OutputTarget.PATIENT_REPORT));
+        verify(runApi, never()).update(any(), any());
+    }
+
+    @Test
+    public void filtersDatabaseTarget() {
+        victim.handle(stagedEvent(PipelineStaged.Analysis.TERTIARY, PipelineStaged.OutputTarget.DATABASE));
+        verify(runApi, never()).update(any(), any());
+    }
+
+    @Test
+    public void filterNonSomaticOrSingleRuns() {
+        when(runApi.get(RUN.getId())).thenReturn(new Run().ini(Ini.RERUN_INI.getValue()));
+        victim.handle(stagedEvent(PipelineStaged.Analysis.TERTIARY, PipelineStaged.OutputTarget.PATIENT_REPORT));
+        verify(runApi, never()).update(any(), any());
+    }
+
+    @Test
     public void finishedSomaticRunNoValidationVcfDoesNothing() {
-        when(runApi.list(Status.FINISHED, Ini.SOMATIC_INI)).thenReturn(singletonList(RUN));
-        when(sampleApi.list(null, SET_ID, SampleType.REF)).thenReturn(singletonList(REF_SAMPLE));
-        when(sampleApi.list(null, SET_ID, SampleType.TUMOR)).thenReturn(singletonList(TUMOR_SAMPLE));
-        victim.run();
+        when(runApi.get(RUN.getId())).thenReturn(RUN);
+        when(sampleApi.list(null, null, null, SET_ID, SampleType.REF, null)).thenReturn(singletonList(REF_SAMPLE));
+        when(sampleApi.list(null, null, null, SET_ID, SampleType.TUMOR, null)).thenReturn(singletonList(TUMOR_SAMPLE));
+        victim.handle(stagedEvent(PipelineStaged.Analysis.TERTIARY, PipelineStaged.OutputTarget.PATIENT_REPORT));
         verify(runApi, never()).update(any(), any());
     }
 
     @Test
     public void finishedSomaticRunNoRefVcfMarksRunTechnicalFail() {
-        when(runApi.list(Status.FINISHED, Ini.SOMATIC_INI)).thenReturn(singletonList(RUN));
-        when(sampleApi.list(null, SET_ID, SampleType.REF)).thenReturn(singletonList(REF_SAMPLE));
+        when(runApi.get(RUN.getId())).thenReturn(RUN);
+        when(sampleApi.list(null, null, null, SET_ID, SampleType.REF, null)).thenReturn(singletonList(REF_SAMPLE));
         Page<Blob> page = mockPage();
         Blob validationVcf = mock(Blob.class);
         when(validationVcf.getName()).thenReturn(BARCODE + ".vcf");
         when(page.iterateAll()).thenReturn(singletonList(validationVcf));
         when(snpcheckBucket.list(Storage.BlobListOption.prefix(SnpCheck.SNPCHECK_VCFS))).thenReturn(page);
-        victim.run();
+        victim.handle(stagedEvent(PipelineStaged.Analysis.TERTIARY, PipelineStaged.OutputTarget.PATIENT_REPORT));
         assertTechnicalFailure();
     }
 
     @Test
     public void finishedSomaticRunComparedToValidationVcfPass() {
         fullSnpcheckWithResult(VcfComparison.Result.PASS);
-        victim.run();
+        victim.handle(stagedEvent(PipelineStaged.Analysis.TERTIARY, PipelineStaged.OutputTarget.PATIENT_REPORT));
         UpdateRun update = captureUpdate();
         assertThat(update.getStatus()).isEqualTo(Status.VALIDATED);
     }
@@ -115,22 +130,36 @@ public class SnpCheckTest {
     @Test
     public void finishedSomaticRunComparedToValidationVcfFail() {
         fullSnpcheckWithResult(VcfComparison.Result.FAIL);
-        victim.run();
+        victim.handle(stagedEvent(PipelineStaged.Analysis.TERTIARY, PipelineStaged.OutputTarget.PATIENT_REPORT));
         UpdateRun update = captureUpdate();
         assertThat(update.getStatus()).isEqualTo(Status.FAILED);
         assertThat(update.getFailure()).isEqualTo(new RunFailure().source("SnpCheck").type(RunFailure.TypeEnum.QCFAILURE));
+    }
+
+    @Test
+    public void finishedSingleSampleRunComparedToValidationVcfPass() {
+        Run singleSampleRun = new Run().bucket("bucket")
+                .id(RUN_ID)
+                .set(new RunSet().name("set").refSample("ref").id(SET_ID))
+                .ini(Ini.SINGLESAMPLE_INI.getValue());
+        when(runApi.get(RUN.getId())).thenReturn(singleSampleRun);
+        when(sampleApi.list(null, null, null, SET_ID, SampleType.REF, null)).thenReturn(singletonList(REF_SAMPLE));
+        setupValidationVcfs(VcfComparison.Result.PASS, singleSampleRun);
+        victim.handle(stagedEvent(PipelineStaged.Analysis.TERTIARY, PipelineStaged.OutputTarget.PATIENT_REPORT));
+        UpdateRun update = captureUpdate();
+        assertThat(update.getStatus()).isEqualTo(Status.VALIDATED);
     }
 
     @SuppressWarnings("unchecked")
     @Test
     public void publishesTurquoiseEventOnCompletion() throws Exception {
         fullSnpcheckWithResult(VcfComparison.Result.PASS);
-        victim.run();
+        victim.handle(stagedEvent(PipelineStaged.Analysis.TERTIARY, PipelineStaged.OutputTarget.PATIENT_REPORT));
         ArgumentCaptor<PubsubMessage> pubsubMessageArgumentCaptor = ArgumentCaptor.forClass(PubsubMessage.class);
         verify(publisher).publish(pubsubMessageArgumentCaptor.capture());
         Map<Object, Object> message =
                 new ObjectMapper().readValue(new String(pubsubMessageArgumentCaptor.getValue().getData().toByteArray()),
-                        new TypeReference<Map<Object, Object>>() {
+                        new TypeReference<>() {
                         });
         assertThat(message.get("type")).isEqualTo("snpcheck.completed");
         List<Map<String, String>> subjects = (List<Map<String, String>>) message.get("subjects");
@@ -156,9 +185,13 @@ public class SnpCheckTest {
     }
 
     private void fullSnpcheckWithResult(final VcfComparison.Result result) {
-        when(runApi.list(Status.FINISHED, Ini.SOMATIC_INI)).thenReturn(singletonList(RUN));
-        when(sampleApi.list(null, SET_ID, SampleType.REF)).thenReturn(singletonList(REF_SAMPLE));
-        when(sampleApi.list(null, SET_ID, SampleType.TUMOR)).thenReturn(singletonList(TUMOR_SAMPLE));
+        when(runApi.get(RUN.getId())).thenReturn(RUN);
+        when(sampleApi.list(null, null, null, SET_ID, SampleType.REF, null)).thenReturn(singletonList(REF_SAMPLE));
+        when(sampleApi.list(null, null, null, SET_ID, SampleType.TUMOR, null)).thenReturn(singletonList(TUMOR_SAMPLE));
+        setupValidationVcfs(result, RUN);
+    }
+
+    private void setupValidationVcfs(final VcfComparison.Result result, final Run run) {
         Page<Blob> page = mockPage();
         Blob validationVcf = mock(Blob.class);
         when(validationVcf.getName()).thenReturn(BARCODE + ".vcf");
@@ -168,6 +201,18 @@ public class SnpCheckTest {
         when(pipelineStorage.get(RUN.getBucket())).thenReturn(referenceBucket);
         Blob referenceVcf = mock(Blob.class);
         when(referenceBucket.get("set/sampler/snp_genotype/snp_genotype_output.vcf")).thenReturn(referenceVcf);
-        when(vcfComparison.compare(RUN, referenceVcf, validationVcf)).thenReturn(result);
+        when(vcfComparison.compare(run, referenceVcf, validationVcf)).thenReturn(result);
+    }
+
+    private static ImmutablePipelineStaged stagedEvent(final PipelineStaged.Analysis analysis, final PipelineStaged.OutputTarget target) {
+        return PipelineStaged.builder()
+                .analysis(analysis)
+                .sample(TUMOR_SAMPLE.getName())
+                .version("version")
+                .target(target)
+                .type(PipelineStaged.Type.DNA)
+                .setId(SET_ID)
+                .runId(RUN_ID)
+                .build();
     }
 }

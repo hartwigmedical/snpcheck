@@ -9,6 +9,9 @@ import com.google.cloud.storage.Bucket;
 import com.google.cloud.storage.StorageOptions;
 import com.google.pubsub.v1.ProjectTopicName;
 import com.hartwig.api.HmfApi;
+import com.hartwig.events.EventSubscriber;
+import com.hartwig.events.PipelineEvent;
+import com.hartwig.events.PipelineStaged;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -52,15 +55,15 @@ public class SnpCheckMain implements Callable<Integer> {
                 LOGGER.error("Bucket [{}] does not exist. ", snpcheckBucketName);
                 return 1;
             }
-            Publisher publisher = Publisher.newBuilder(ProjectTopicName.of(project, "turquoise.events"))
-                    .setCredentialsProvider(() -> snpCheckCredentials)
-                    .build();
-            new SnpCheck(hmfApi.runs(),
-                    hmfApi.samples(),
-                    snpcheckBucket,
-                    StorageOptions.newBuilder().setCredentials(databaseCredentials).build().getService(),
-                    new PerlVcfComparison(),
-                    publisher).run();
+            EventSubscriber.create(project, snpCheckCredentials, PipelineStaged.subscription("snpcheck"), PipelineStaged.class)
+                    .subscribe(new SnpCheck(hmfApi.runs(),
+                            hmfApi.samples(),
+                            snpcheckBucket,
+                            StorageOptions.newBuilder().setCredentials(databaseCredentials).build().getService(),
+                            new PerlVcfComparison(),
+                            Publisher.newBuilder(ProjectTopicName.of(project, "turquoise.events"))
+                                    .setCredentialsProvider(() -> snpCheckCredentials)
+                                    .build()));
             return 0;
         } catch (Exception e) {
             LOGGER.error("Exception while running snpcheck", e);

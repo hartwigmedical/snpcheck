@@ -1,51 +1,48 @@
-apiVersion: batch/v1beta1
-kind: CronJob
+apiVersion: apps/v1
+kind: Deployment
 metadata:
   name: snpcheck
   namespace: acceptance
 spec:
-  concurrencyPolicy: Forbid
-  failedJobsHistoryLimit: 1
-  jobTemplate:
+  selector:
+    matchLabels:
+      app: snpcheck
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: snpcheck
+        tier: app
     spec:
-      completions: 1
-      parallelism: 1
-      template:
-        spec:
-          containers:
-            - args:
-                - --api_url
-                - http://hmfapi-gcp:5002
-                - --snpcheck_bucket
-                - hmf-snpcheck-development
-                - --snpcheck_private_key
-                - /snpcheck_secrets/bootstrap-key.json
-                - --database_private_key
-                - /database_secrets/bootstrap-key.json
-                - --project
-                - hmf-pipeline-development
-              command:
-                - /snpcheck.sh
-              image: eu.gcr.io/hmf-build/snpcheck
-              imagePullPolicy: Always
-              name: snpcheck
-              volumeMounts:
-                - mountPath: /snpcheck_secrets/
-                  name: snpcheck-secrets
-                - mountPath: /database_secrets/
-                  name: database-secrets
-          dnsPolicy: ClusterFirst
-          restartPolicy: Never
-          schedulerName: default-scheduler
-          volumes:
-            - name: snpcheck-secrets
-              secret:
-                defaultMode: 420
-                secretName: gcp-pipeline5-scheduler
-            - name: database-secrets
-              secret:
-                defaultMode: 420
-                secretName: gcp-pipeline5-scheduler
-  schedule: '*/30 * * * *'
-  successfulJobsHistoryLimit: 1
-  suspend: false
+      volumes:
+        - name: snpcheck-secrets
+          secret:
+            defaultMode: 420
+            secretName: gcp-pipeline5-scheduler
+        - name: database-secrets
+          secret:
+            defaultMode: 420
+            secretName: gcp-pipeline5-scheduler
+
+      containers:
+        - args:
+            - --api_url
+            - http://hmfapi-gcp:5002
+            - --snpcheck_bucket
+            - hmf-snpcheck-development
+            - --snpcheck_private_key
+            - /snpcheck_secrets/bootstrap-key.json
+            - --database_private_key
+            - /database_secrets/bootstrap-key.json
+            - --project
+            - hmf-pipeline-development
+          command:
+            - /snpcheck.sh
+          image: eu.gcr.io/hmf-build/snpcheck
+          imagePullPolicy: Always
+          name: snpcheck
+          volumeMounts:
+            - mountPath: /snpcheck_secrets/
+              name: snpcheck-secrets
+            - mountPath: /database_secrets/
+              name: database-secrets

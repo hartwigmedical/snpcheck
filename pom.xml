@@ -22,8 +22,9 @@
         <picocli.version>4.2.0</picocli.version>
         <slf4j-log4j12.version>1.7.28</slf4j-log4j12.version>
         <google-cloud-bom.version>0.145.0</google-cloud-bom.version>
-        <hmf-api.version>1.1.2</hmf-api.version>
+        <java-client.version>1.1.26</java-client.version>
         <pipeline5.version>5.18.1943</pipeline5.version>
+        <pipeline-events.version>1.1.14</pipeline-events.version>
     </properties>
 
     <repositories>
@@ -38,7 +39,12 @@
         <dependency>
             <groupId>com.hartwig.api</groupId>
             <artifactId>java-client</artifactId>
-            <version>${hmf-api.version}</version>
+            <version>${java-client.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.hartwig</groupId>
+            <artifactId>pipeline-events</artifactId>
+            <version>${pipeline-events.version}</version>
         </dependency>
         <dependency>
             <groupId>com.hartwig</groupId>
