@@ -55,7 +55,7 @@ public class SnpCheckMain implements Callable<Integer> {
                 LOGGER.error("Bucket [{}] does not exist. ", snpcheckBucketName);
                 return 1;
             }
-            EventSubscriber.create(project, snpCheckCredentials, PipelineStaged.subscription("snpcheck"), PipelineStaged.class)
+            EventSubscriber.create(project, snpCheckCredentials, PipelineStaged.subscription(project, "snpcheck"), PipelineStaged.class)
                     .subscribe(new SnpCheck(hmfApi.runs(),
                             hmfApi.samples(),
                             snpcheckBucket,
