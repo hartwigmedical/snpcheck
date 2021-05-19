@@ -21,6 +21,9 @@ import com.hartwig.api.model.Sample;
 import com.hartwig.api.model.SampleType;
 import com.hartwig.api.model.Status;
 import com.hartwig.api.model.UpdateRun;
+import com.hartwig.events.Analysis;
+import com.hartwig.events.Analysis.Context;
+import com.hartwig.events.Analysis.Type;
 import com.hartwig.events.Handler;
 import com.hartwig.events.PipelineStaged;
 import com.hartwig.snpcheck.turquoise.SnpCheckEvent;
@@ -52,8 +55,7 @@ public class SnpCheck implements Handler<PipelineStaged> {
     }
 
     public void handle(final PipelineStaged event) {
-        if (event.analysis().equals(PipelineStaged.Analysis.TERTIARY) && event.target()
-                .equals(PipelineStaged.OutputTarget.PATIENT_REPORT)) {
+        if (event.analysisType().equals(Type.TERTIARY) && event.analysisContext().equals(Context.DIAGNOSTIC)) {
             Run run = runs.get(event.runId().orElseThrow());
             if (run.getIni().equals(Ini.SOMATIC_INI.getValue()) || run.getIni().equals(Ini.SINGLESAMPLE_INI.getValue())) {
                 LOGGER.info("Received a SnpCheck candidate [{}]", run.getSet().getName());
