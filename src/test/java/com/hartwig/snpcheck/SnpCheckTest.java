@@ -33,6 +33,10 @@ import com.hartwig.api.model.Sample;
 import com.hartwig.api.model.SampleType;
 import com.hartwig.api.model.Status;
 import com.hartwig.api.model.UpdateRun;
+import com.hartwig.events.Analysis;
+import com.hartwig.events.Analysis.Context;
+import com.hartwig.events.Analysis.Molecule;
+import com.hartwig.events.Analysis.Type;
 import com.hartwig.events.ImmutablePipelineStaged;
 import com.hartwig.events.PipelineStaged;
 
@@ -74,26 +78,26 @@ public class SnpCheckTest {
     public void finishedSomaticRunNoRefSampleMarksRunTechnicalFail() {
         when(runApi.get(RUN.getId())).thenReturn(RUN);
         when(sampleApi.list(null, null, null, SET_ID, SampleType.REF, null)).thenReturn(emptyList());
-        victim.handle(stagedEvent(PipelineStaged.Analysis.TERTIARY, PipelineStaged.OutputTarget.PATIENT_REPORT));
+        victim.handle(stagedEvent(Type.TERTIARY, Context.DIAGNOSTIC));
         assertTechnicalFailure();
     }
 
     @Test
     public void filtersSecondaryAnalysis() {
-        victim.handle(stagedEvent(PipelineStaged.Analysis.SECONDARY, PipelineStaged.OutputTarget.PATIENT_REPORT));
+        victim.handle(stagedEvent(Type.SECONDARY, Context.DIAGNOSTIC));
         verify(runApi, never()).update(any(), any());
     }
 
     @Test
     public void filtersDatabaseTarget() {
-        victim.handle(stagedEvent(PipelineStaged.Analysis.TERTIARY, PipelineStaged.OutputTarget.DATABASE));
+        victim.handle(stagedEvent(Type.TERTIARY, Context.RESEARCH));
         verify(runApi, never()).update(any(), any());
     }
 
     @Test
     public void filterNonSomaticOrSingleRuns() {
         when(runApi.get(RUN.getId())).thenReturn(new Run().ini(Ini.RERUN_INI.getValue()));
-        victim.handle(stagedEvent(PipelineStaged.Analysis.TERTIARY, PipelineStaged.OutputTarget.PATIENT_REPORT));
+        victim.handle(stagedEvent(Type.TERTIARY, Context.DIAGNOSTIC));
         verify(runApi, never()).update(any(), any());
     }
 
@@ -102,7 +106,7 @@ public class SnpCheckTest {
         when(runApi.get(RUN.getId())).thenReturn(RUN);
         when(sampleApi.list(null, null, null, SET_ID, SampleType.REF, null)).thenReturn(singletonList(REF_SAMPLE));
         when(sampleApi.list(null, null, null, SET_ID, SampleType.TUMOR, null)).thenReturn(singletonList(TUMOR_SAMPLE));
-        victim.handle(stagedEvent(PipelineStaged.Analysis.TERTIARY, PipelineStaged.OutputTarget.PATIENT_REPORT));
+        victim.handle(stagedEvent(Type.TERTIARY, Context.DIAGNOSTIC));
         verify(runApi, never()).update(any(), any());
     }
 
@@ -115,14 +119,14 @@ public class SnpCheckTest {
         when(validationVcf.getName()).thenReturn(BARCODE + ".vcf");
         when(page.iterateAll()).thenReturn(singletonList(validationVcf));
         when(snpcheckBucket.list(Storage.BlobListOption.prefix(SnpCheck.SNPCHECK_VCFS))).thenReturn(page);
-        victim.handle(stagedEvent(PipelineStaged.Analysis.TERTIARY, PipelineStaged.OutputTarget.PATIENT_REPORT));
+        victim.handle(stagedEvent(Type.TERTIARY, Context.DIAGNOSTIC));
         assertTechnicalFailure();
     }
 
     @Test
     public void finishedSomaticRunComparedToValidationVcfPass() {
         fullSnpcheckWithResult(VcfComparison.Result.PASS);
-        victim.handle(stagedEvent(PipelineStaged.Analysis.TERTIARY, PipelineStaged.OutputTarget.PATIENT_REPORT));
+        victim.handle(stagedEvent(Type.TERTIARY, Context.DIAGNOSTIC));
         UpdateRun update = captureUpdate();
         assertThat(update.getStatus()).isEqualTo(Status.VALIDATED);
     }
@@ -130,7 +134,7 @@ public class SnpCheckTest {
     @Test
     public void finishedSomaticRunComparedToValidationVcfFail() {
         fullSnpcheckWithResult(VcfComparison.Result.FAIL);
-        victim.handle(stagedEvent(PipelineStaged.Analysis.TERTIARY, PipelineStaged.OutputTarget.PATIENT_REPORT));
+        victim.handle(stagedEvent(Type.TERTIARY, Context.DIAGNOSTIC));
         UpdateRun update = captureUpdate();
         assertThat(update.getStatus()).isEqualTo(Status.FAILED);
         assertThat(update.getFailure()).isEqualTo(new RunFailure().source("SnpCheck").type(RunFailure.TypeEnum.QCFAILURE));
@@ -145,7 +149,7 @@ public class SnpCheckTest {
         when(runApi.get(RUN.getId())).thenReturn(singleSampleRun);
         when(sampleApi.list(null, null, null, SET_ID, SampleType.REF, null)).thenReturn(singletonList(REF_SAMPLE));
         setupValidationVcfs(VcfComparison.Result.PASS, singleSampleRun);
-        victim.handle(stagedEvent(PipelineStaged.Analysis.TERTIARY, PipelineStaged.OutputTarget.PATIENT_REPORT));
+        victim.handle(stagedEvent(Type.TERTIARY, Context.DIAGNOSTIC));
         UpdateRun update = captureUpdate();
         assertThat(update.getStatus()).isEqualTo(Status.VALIDATED);
     }
@@ -154,7 +158,7 @@ public class SnpCheckTest {
     @Test
     public void publishesTurquoiseEventOnCompletion() throws Exception {
         fullSnpcheckWithResult(VcfComparison.Result.PASS);
-        victim.handle(stagedEvent(PipelineStaged.Analysis.TERTIARY, PipelineStaged.OutputTarget.PATIENT_REPORT));
+        victim.handle(stagedEvent(Type.TERTIARY, Context.DIAGNOSTIC));
         ArgumentCaptor<PubsubMessage> pubsubMessageArgumentCaptor = ArgumentCaptor.forClass(PubsubMessage.class);
         verify(publisher).publish(pubsubMessageArgumentCaptor.capture());
         Map<Object, Object> message =
@@ -204,13 +208,13 @@ public class SnpCheckTest {
         when(vcfComparison.compare(run, referenceVcf, validationVcf)).thenReturn(result);
     }
 
-    private static ImmutablePipelineStaged stagedEvent(final PipelineStaged.Analysis analysis, final PipelineStaged.OutputTarget target) {
+    private static ImmutablePipelineStaged stagedEvent(final Analysis.Type type, final Analysis.Context context) {
         return PipelineStaged.builder()
-                .analysis(analysis)
+                .analysisType(type)
                 .sample(TUMOR_SAMPLE.getName())
                 .version("version")
-                .target(target)
-                .type(PipelineStaged.Type.DNA)
+                .analysisContext(context)
+                .analysisMolecule(Molecule.DNA)
                 .setId(SET_ID)
                 .runId(RUN_ID)
                 .build();
