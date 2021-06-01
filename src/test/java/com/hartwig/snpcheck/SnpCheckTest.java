@@ -104,8 +104,15 @@ public class SnpCheckTest {
     }
 
     @Test
-    public void filtersNonFinishedRuns() {
+    public void filtersNonFinishedSomaticRuns() {
         when(runApi.get(run.getId())).thenReturn(run.status(Status.PENDING));
+        victim.handle(stagedEvent(Type.TERTIARY, Context.DIAGNOSTIC));
+        verify(runApi, never()).update(any(), any());
+    }
+
+    @Test
+    public void filtersNonFinishedSingleRuns() {
+        when(runApi.get(run.getId())).thenReturn(run.status(Status.PENDING).ini(Ini.SINGLESAMPLE_INI.getValue()));
         victim.handle(stagedEvent(Type.TERTIARY, Context.DIAGNOSTIC));
         verify(runApi, never()).update(any(), any());
     }

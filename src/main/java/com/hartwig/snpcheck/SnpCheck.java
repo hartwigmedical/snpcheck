@@ -58,7 +58,7 @@ public class SnpCheck implements Handler<PipelineStaged> {
         if (event.analysisType().equals(Type.TERTIARY) && event.analysisContext().equals(Context.DIAGNOSTIC)) {
             Run run = runs.get(event.runId().orElseThrow());
             if (run.getStatus().equals(Status.FINISHED) &&
-                    run.getIni().equals(Ini.SOMATIC_INI.getValue()) || run.getIni().equals(Ini.SINGLESAMPLE_INI.getValue())) {
+                    (run.getIni().equals(Ini.SOMATIC_INI.getValue()) || run.getIni().equals(Ini.SINGLESAMPLE_INI.getValue()))) {
                 LOGGER.info("Received a SnpCheck candidate [{}]", run.getSet().getName());
                 Iterable<Blob> valVcfs = Optional.ofNullable(snpcheckBucket.list(Storage.BlobListOption.prefix(SNPCHECK_VCFS)))
                         .map(Page::iterateAll)
