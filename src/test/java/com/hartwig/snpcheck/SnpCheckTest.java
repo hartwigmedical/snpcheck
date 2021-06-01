@@ -4,6 +4,7 @@ import static java.util.Collections.emptyList;
 import static java.util.Collections.singletonList;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 import static org.mockito.Mockito.mock;
@@ -48,11 +49,10 @@ public class SnpCheckTest {
 
     private static final long SET_ID = 2L;
     public static final long RUN_ID = 1L;
-    private static final Run RUN =
-            new Run().bucket("bucket").id(RUN_ID).set(new RunSet().name("set").refSample("ref").id(SET_ID)).ini(Ini.SOMATIC_INI.getValue());
     private static final String BARCODE = "barcode";
     private static final Sample REF_SAMPLE = new Sample().barcode(BARCODE).name("sampler");
     private static final Sample TUMOR_SAMPLE = new Sample().barcode(BARCODE).name("samplet");
+    private Run run;
     private RunApi runApi;
     private SampleApi sampleApi;
     private Storage pipelineStorage;
@@ -63,6 +63,8 @@ public class SnpCheckTest {
 
     @Before
     public void setUp() {
+        run = new Run().bucket("bucket").id(RUN_ID).set(new RunSet().name("set").refSample("ref").id(SET_ID)).ini(Ini.SOMATIC_INI.getValue())
+                .status(Status.FINISHED);
         runApi = mock(RunApi.class);
         sampleApi = mock(SampleApi.class);
         pipelineStorage = mock(Storage.class);
@@ -76,7 +78,7 @@ public class SnpCheckTest {
 
     @Test
     public void finishedSomaticRunNoRefSampleMarksRunTechnicalFail() {
-        when(runApi.get(RUN.getId())).thenReturn(RUN);
+        when(runApi.get(run.getId())).thenReturn(run);
         when(sampleApi.list(null, null, null, SET_ID, SampleType.REF, null)).thenReturn(emptyList());
         victim.handle(stagedEvent(Type.TERTIARY, Context.DIAGNOSTIC));
         assertTechnicalFailure();
@@ -96,14 +98,28 @@ public class SnpCheckTest {
 
     @Test
     public void filterNonSomaticOrSingleRuns() {
-        when(runApi.get(RUN.getId())).thenReturn(new Run().ini(Ini.RERUN_INI.getValue()));
+        when(runApi.get(run.getId())).thenReturn(new Run().ini(Ini.RERUN_INI.getValue()).status(Status.FINISHED));
+        victim.handle(stagedEvent(Type.TERTIARY, Context.DIAGNOSTIC));
+        verify(runApi, never()).update(any(), any());
+    }
+
+    @Test
+    public void filtersNonFinishedSomaticRuns() {
+        when(runApi.get(run.getId())).thenReturn(run.status(Status.PENDING));
+        victim.handle(stagedEvent(Type.TERTIARY, Context.DIAGNOSTIC));
+        verify(runApi, never()).update(any(), any());
+    }
+
+    @Test
+    public void filtersNonFinishedSingleRuns() {
+        when(runApi.get(run.getId())).thenReturn(run.status(Status.PENDING).ini(Ini.SINGLESAMPLE_INI.getValue()));
         victim.handle(stagedEvent(Type.TERTIARY, Context.DIAGNOSTIC));
         verify(runApi, never()).update(any(), any());
     }
 
     @Test
     public void finishedSomaticRunNoValidationVcfDoesNothing() {
-        when(runApi.get(RUN.getId())).thenReturn(RUN);
+        when(runApi.get(run.getId())).thenReturn(run);
         when(sampleApi.list(null, null, null, SET_ID, SampleType.REF, null)).thenReturn(singletonList(REF_SAMPLE));
         when(sampleApi.list(null, null, null, SET_ID, SampleType.TUMOR, null)).thenReturn(singletonList(TUMOR_SAMPLE));
         victim.handle(stagedEvent(Type.TERTIARY, Context.DIAGNOSTIC));
@@ -112,7 +128,7 @@ public class SnpCheckTest {
 
     @Test
     public void finishedSomaticRunNoRefVcfMarksRunTechnicalFail() {
-        when(runApi.get(RUN.getId())).thenReturn(RUN);
+        when(runApi.get(run.getId())).thenReturn(run);
         when(sampleApi.list(null, null, null, SET_ID, SampleType.REF, null)).thenReturn(singletonList(REF_SAMPLE));
         Page<Blob> page = mockPage();
         Blob validationVcf = mock(Blob.class);
@@ -145,8 +161,9 @@ public class SnpCheckTest {
         Run singleSampleRun = new Run().bucket("bucket")
                 .id(RUN_ID)
                 .set(new RunSet().name("set").refSample("ref").id(SET_ID))
-                .ini(Ini.SINGLESAMPLE_INI.getValue());
-        when(runApi.get(RUN.getId())).thenReturn(singleSampleRun);
+                .ini(Ini.SINGLESAMPLE_INI.getValue())
+                .status(Status.FINISHED);
+        when(runApi.get(run.getId())).thenReturn(singleSampleRun);
         when(sampleApi.list(null, null, null, SET_ID, SampleType.REF, null)).thenReturn(singletonList(REF_SAMPLE));
         setupValidationVcfs(VcfComparison.Result.PASS, singleSampleRun);
         victim.handle(stagedEvent(Type.TERTIARY, Context.DIAGNOSTIC));
@@ -184,15 +201,15 @@ public class SnpCheckTest {
 
     private UpdateRun captureUpdate() {
         ArgumentCaptor<UpdateRun> updateRunArgumentCaptor = ArgumentCaptor.forClass(UpdateRun.class);
-        verify(runApi).update(eq(RUN.getId()), updateRunArgumentCaptor.capture());
+        verify(runApi).update(eq(run.getId()), updateRunArgumentCaptor.capture());
         return updateRunArgumentCaptor.getValue();
     }
 
     private void fullSnpcheckWithResult(final VcfComparison.Result result) {
-        when(runApi.get(RUN.getId())).thenReturn(RUN);
+        when(runApi.get(run.getId())).thenReturn(run);
         when(sampleApi.list(null, null, null, SET_ID, SampleType.REF, null)).thenReturn(singletonList(REF_SAMPLE));
         when(sampleApi.list(null, null, null, SET_ID, SampleType.TUMOR, null)).thenReturn(singletonList(TUMOR_SAMPLE));
-        setupValidationVcfs(result, RUN);
+        setupValidationVcfs(result, run);
     }
 
     private void setupValidationVcfs(final VcfComparison.Result result, final Run run) {
@@ -202,7 +219,7 @@ public class SnpCheckTest {
         when(page.iterateAll()).thenReturn(singletonList(validationVcf));
         when(snpcheckBucket.list(Storage.BlobListOption.prefix(SnpCheck.SNPCHECK_VCFS))).thenReturn(page);
         Bucket referenceBucket = mock(Bucket.class);
-        when(pipelineStorage.get(RUN.getBucket())).thenReturn(referenceBucket);
+        when(pipelineStorage.get(this.run.getBucket())).thenReturn(referenceBucket);
         Blob referenceVcf = mock(Blob.class);
         when(referenceBucket.get("set/sampler/snp_genotype/snp_genotype_output.vcf")).thenReturn(referenceVcf);
         when(vcfComparison.compare(run, referenceVcf, validationVcf)).thenReturn(result);
