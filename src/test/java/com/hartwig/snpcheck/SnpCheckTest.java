@@ -63,7 +63,10 @@ public class SnpCheckTest {
 
     @Before
     public void setUp() {
-        run = new Run().bucket("bucket").id(RUN_ID).set(new RunSet().name("set").refSample("ref").id(SET_ID)).ini(Ini.SOMATIC_INI.getValue())
+        run = new Run().bucket("bucket")
+                .id(RUN_ID)
+                .set(new RunSet().name("set").refSample("ref").id(SET_ID))
+                .ini(Ini.SOMATIC_INI.getValue())
                 .status(Status.FINISHED);
         runApi = mock(RunApi.class);
         sampleApi = mock(SampleApi.class);
@@ -118,6 +121,18 @@ public class SnpCheckTest {
     }
 
     @Test
+    public void filtersResearchRuns() {
+        victim.handle(stagedEvent(Type.TERTIARY, Context.RESEARCH));
+        verify(runApi, never()).update(any(), any());
+    }
+
+    @Test
+    public void filtersShallowRuns() {
+        victim.handle(stagedEvent(Type.TERTIARY, Context.SHALLOW));
+        verify(runApi, never()).update(any(), any());
+    }
+
+    @Test
     public void finishedSomaticRunNoValidationVcfDoesNothing() {
         when(runApi.get(run.getId())).thenReturn(run);
         when(sampleApi.list(null, null, null, SET_ID, SampleType.REF, null)).thenReturn(singletonList(REF_SAMPLE));
@@ -140,9 +155,17 @@ public class SnpCheckTest {
     }
 
     @Test
-    public void finishedSomaticRunComparedToValidationVcfPass() {
+    public void finishedSomaticDiagnosticRunComparedToValidationVcfPass() {
         fullSnpcheckWithResult(VcfComparison.Result.PASS);
         victim.handle(stagedEvent(Type.TERTIARY, Context.DIAGNOSTIC));
+        UpdateRun update = captureUpdate();
+        assertThat(update.getStatus()).isEqualTo(Status.VALIDATED);
+    }
+
+    @Test
+    public void finishedSomaticServicesRunComparedToValidationVcfPass() {
+        fullSnpcheckWithResult(VcfComparison.Result.PASS);
+        victim.handle(stagedEvent(Type.TERTIARY, Context.SERVICES));
         UpdateRun update = captureUpdate();
         assertThat(update.getStatus()).isEqualTo(Status.VALIDATED);
     }
