@@ -60,33 +60,36 @@ public class SnpCheck implements Handler<PipelineStaged> {
             if (event.analysisType().equals(Type.TERTIARY) && (event.analysisContext().equals(Context.DIAGNOSTIC) || event.analysisContext()
                     .equals(Context.SERVICES))) {
                 Run run = runs.get(event.runId().orElseThrow());
-                if (run.getStatus().equals(Status.FINISHED) && (run.getIni().equals(Ini.SOMATIC_INI.getValue()) || run.getIni()
-                        .equals(Ini.SINGLESAMPLE_INI.getValue()))) {
+                if (run.getIni().equals(Ini.SOMATIC_INI.getValue()) || run.getIni().equals(Ini.SINGLESAMPLE_INI.getValue())) {
                     LOGGER.info("Received a SnpCheck candidate [{}]", run.getSet().getName());
-                    Iterable<Blob> valVcfs = Optional.ofNullable(snpcheckBucket.list(Storage.BlobListOption.prefix(SNPCHECK_VCFS)))
-                            .map(Page::iterateAll)
-                            .orElse(Collections.emptyList());
-                    Optional<Sample> maybeRefSample = onlyOne(samples, run.getSet(), SampleType.REF);
-                    Optional<Sample> maybeTumorSample = onlyOne(samples, run.getSet(), SampleType.TUMOR);
-                    if (maybeRefSample.isPresent()) {
-                        Sample refSample = maybeRefSample.get();
-                        Optional<Blob> maybeValVcf = findValidationVcf(valVcfs, refSample);
-                        if (maybeValVcf.isPresent()) {
-                            VcfComparison.Result result = doComparison(run, refSample, maybeValVcf.get());
-                            SnpCheckEvent.builder()
-                                    .publisher(publisher)
-                                    .sample(maybeTumorSample.map(Sample::getName).orElse(refSample.getName()))
-                                    .result(result.name().toLowerCase())
-                                    .build()
-                                    .publish();
+                    if (run.getStatus().equals(Status.FINISHED)) {
+                        Iterable<Blob> valVcfs = Optional.ofNullable(snpcheckBucket.list(Storage.BlobListOption.prefix(SNPCHECK_VCFS)))
+                                .map(Page::iterateAll)
+                                .orElse(Collections.emptyList());
+                        Optional<Sample> maybeRefSample = onlyOne(samples, run.getSet(), SampleType.REF);
+                        Optional<Sample> maybeTumorSample = onlyOne(samples, run.getSet(), SampleType.TUMOR);
+                        if (maybeRefSample.isPresent()) {
+                            Sample refSample = maybeRefSample.get();
+                            Optional<Blob> maybeValVcf = findValidationVcf(valVcfs, refSample);
+                            if (maybeValVcf.isPresent()) {
+                                VcfComparison.Result result = doComparison(run, refSample, maybeValVcf.get());
+                                SnpCheckEvent.builder()
+                                        .publisher(publisher)
+                                        .sample(maybeTumorSample.map(Sample::getName).orElse(refSample.getName()))
+                                        .result(result.name().toLowerCase())
+                                        .build()
+                                        .publish();
+                            } else {
+                                LOGGER.info("No validation VCF available for set [{}]. Will be checked again next time snpcheck runs",
+                                        run.getSet().getName());
+                            }
                         } else {
-                            LOGGER.info("No validation VCF available for set [{}]. Will be checked again next time snpcheck runs",
+                            LOGGER.warn("Set [{}] had no ref sample available in the API. Unable to locate validation VCF.",
                                     run.getSet().getName());
+                            failed(run, RunFailure.TypeEnum.TECHNICALFAILURE);
                         }
                     } else {
-                        LOGGER.warn("Set [{}] had no ref sample available in the API. Unable to locate validation VCF.",
-                                run.getSet().getName());
-                        failed(run, RunFailure.TypeEnum.TECHNICALFAILURE);
+                        LOGGER.info("Skipping run with status [{}]", run.getStatus());
                     }
                 }
             }
