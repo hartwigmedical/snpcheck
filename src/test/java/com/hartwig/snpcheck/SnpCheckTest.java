@@ -63,11 +63,7 @@ public class SnpCheckTest {
 
     @Before
     public void setUp() {
-        run = new Run().bucket("bucket")
-                .id(RUN_ID)
-                .set(new RunSet().name("set").refSample("ref").id(SET_ID))
-                .ini(Ini.SOMATIC_INI.getValue())
-                .status(Status.FINISHED);
+        run = run(Ini.SOMATIC_INI);
         runApi = mock(RunApi.class);
         sampleApi = mock(SampleApi.class);
         pipelineStorage = mock(Storage.class);
@@ -77,6 +73,14 @@ public class SnpCheckTest {
         //noinspection unchecked
         when(publisher.publish(any())).thenReturn(mock(ApiFuture.class));
         victim = new SnpCheck(runApi, sampleApi, snpcheckBucket, pipelineStorage, vcfComparison, publisher);
+    }
+
+    private Run run(final Ini somaticIni) {
+        return new Run().bucket("bucket")
+                .id(RUN_ID)
+                .set(new RunSet().name("set").refSample("ref").id(SET_ID))
+                .ini(somaticIni.getValue())
+                .status(Status.FINISHED);
     }
 
     @Test
@@ -118,6 +122,14 @@ public class SnpCheckTest {
         when(runApi.get(run.getId())).thenReturn(run.status(Status.PENDING).ini(Ini.SINGLESAMPLE_INI.getValue()));
         victim.handle(stagedEvent(Type.TERTIARY, Context.DIAGNOSTIC));
         verify(runApi, never()).update(any(), any());
+    }
+
+    @Test
+    public void waitsForProcessingRunsForFiveSeconds() {
+        when(runApi.get(run.getId())).thenReturn(run(Ini.SOMATIC_INI).status(Status.PROCESSING))
+                .thenReturn(run(Ini.SOMATIC_INI).status(Status.FINISHED));
+        victim.handle(stagedEvent(Type.TERTIARY, Context.DIAGNOSTIC));
+        verify(runApi, times(1)).update(any(), any());
     }
 
     @Test
@@ -181,11 +193,7 @@ public class SnpCheckTest {
 
     @Test
     public void finishedSingleSampleRunComparedToValidationVcfPass() {
-        Run singleSampleRun = new Run().bucket("bucket")
-                .id(RUN_ID)
-                .set(new RunSet().name("set").refSample("ref").id(SET_ID))
-                .ini(Ini.SINGLESAMPLE_INI.getValue())
-                .status(Status.FINISHED);
+        Run singleSampleRun = run(Ini.SINGLESAMPLE_INI);
         when(runApi.get(run.getId())).thenReturn(singleSampleRun);
         when(sampleApi.list(null, null, null, SET_ID, SampleType.REF, null)).thenReturn(singletonList(REF_SAMPLE));
         setupValidationVcfs(VcfComparison.Result.PASS, singleSampleRun);
