@@ -3,6 +3,8 @@ package com.hartwig.snpcheck;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.StreamSupport;
 
 import com.google.api.gax.paging.Page;
@@ -10,8 +12,6 @@ import com.google.cloud.pubsub.v1.Publisher;
 import com.google.cloud.storage.Blob;
 import com.google.cloud.storage.Bucket;
 import com.google.cloud.storage.Storage;
-import com.google.common.collect.Iterables;
-import com.hartwig.ApiException;
 import com.hartwig.api.RunApi;
 import com.hartwig.api.SampleApi;
 import com.hartwig.api.model.Ini;
@@ -22,7 +22,6 @@ import com.hartwig.api.model.Sample;
 import com.hartwig.api.model.SampleType;
 import com.hartwig.api.model.Status;
 import com.hartwig.api.model.UpdateRun;
-import com.hartwig.events.Analysis;
 import com.hartwig.events.Analysis.Context;
 import com.hartwig.events.Analysis.Type;
 import com.hartwig.events.Handler;
@@ -44,6 +43,7 @@ public class SnpCheck implements Handler<PipelineStaged> {
     private final Storage pipelineStorage;
     private final VcfComparison vcfComparison;
     private final Publisher publisher;
+    private final LabPendingBuffer labPendingBuffer;
 
     public SnpCheck(final RunApi runs, final SampleApi samples, final Bucket snpcheckBucket, final Storage pipelineStorage,
             final VcfComparison vcfComparison, final Publisher publisher) {
@@ -53,6 +53,7 @@ public class SnpCheck implements Handler<PipelineStaged> {
         this.pipelineStorage = pipelineStorage;
         this.vcfComparison = vcfComparison;
         this.publisher = publisher;
+        this.labPendingBuffer = new LabPendingBuffer(this, Executors.newScheduledThreadPool(1), TimeUnit.HOURS, 1);
     }
 
     public void handle(final PipelineStaged event) {
@@ -80,8 +81,8 @@ public class SnpCheck implements Handler<PipelineStaged> {
                                         .build()
                                         .publish();
                             } else {
-                                LOGGER.info("No validation VCF available for set [{}]. Will be checked again next time snpcheck runs",
-                                        run.getSet().getName());
+                                LOGGER.info("No validation VCF available for set [{}].", run.getSet().getName());
+                                labPendingBuffer.add(event);
                             }
                         } else {
                             LOGGER.warn("Set [{}] had no ref sample available in the API. Unable to locate validation VCF.",

@@ -10,7 +10,6 @@ import com.google.cloud.storage.StorageOptions;
 import com.google.pubsub.v1.ProjectTopicName;
 import com.hartwig.api.HmfApi;
 import com.hartwig.events.EventSubscriber;
-import com.hartwig.events.PipelineEvent;
 import com.hartwig.events.PipelineStaged;
 
 import org.slf4j.Logger;
