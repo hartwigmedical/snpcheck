@@ -82,7 +82,8 @@ public class SnpCheck {
     }
 
     private static Optional<Blob> findValidationVcf(final Iterable<Blob> valVcfs, final Sample refSample) {
-        return StreamSupport.stream(valVcfs.spliterator(), false).filter(vcf -> vcf.getName().contains(refSample.getBarcode())).findFirst();
+        String barcode = refSample.getBarcode().split("_")[0];
+        return StreamSupport.stream(valVcfs.spliterator(), false).filter(vcf -> vcf.getName().startsWith(barcode)).findFirst();
     }
 
     private void doComparison(final Run run, final Sample refSample, final Sample tumorSample, final Blob valVcf) {
