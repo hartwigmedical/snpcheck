@@ -167,17 +167,25 @@ public class SnpCheckTest {
     }
 
     @Test
-    public void finishedSomaticRunComparedToValidationVcfPass() {
+    public void finishedSomaticDiagnosticRunComparedToValidationVcfPass() {
         fullSnpcheckWithResult(VcfComparison.Result.PASS, BARCODE);
-        victim.run();
+        victim.handle(stagedEvent(Type.TERTIARY, Context.DIAGNOSTIC));
         UpdateRun update = captureUpdate();
         assertThat(update.getStatus()).isEqualTo(Status.VALIDATED);
     }
 
     @Test
-    public void finishedSomaticRunComparedToValidationVcfPassWithSampleNameInBarcode() {
+    public void finishedSomaticDiagnosticWithSampleInBarcodeRunComparedToValidationVcfPass() {
         fullSnpcheckWithResult(VcfComparison.Result.PASS, BARCODE + "_sampler");
-        victim.run();
+        victim.handle(stagedEvent(Type.TERTIARY, Context.DIAGNOSTIC));
+        UpdateRun update = captureUpdate();
+        assertThat(update.getStatus()).isEqualTo(Status.VALIDATED);
+    }
+
+    @Test
+    public void finishedSomaticServicesRunComparedToValidationVcfPass() {
+        fullSnpcheckWithResult(VcfComparison.Result.PASS, BARCODE);
+        victim.handle(stagedEvent(Type.TERTIARY, Context.SERVICES));
         UpdateRun update = captureUpdate();
         assertThat(update.getStatus()).isEqualTo(Status.VALIDATED);
     }
@@ -185,7 +193,7 @@ public class SnpCheckTest {
     @Test
     public void finishedSomaticRunComparedToValidationVcfFail() {
         fullSnpcheckWithResult(VcfComparison.Result.FAIL, BARCODE);
-        victim.run();
+        victim.handle(stagedEvent(Type.TERTIARY, Context.DIAGNOSTIC));
         UpdateRun update = captureUpdate();
         assertThat(update.getStatus()).isEqualTo(Status.FAILED);
         assertThat(update.getFailure()).isEqualTo(new RunFailure().source("SnpCheck").type(RunFailure.TypeEnum.QCFAILURE));
@@ -196,7 +204,7 @@ public class SnpCheckTest {
         Run singleSampleRun = run(Ini.SINGLESAMPLE_INI);
         when(runApi.get(run.getId())).thenReturn(singleSampleRun);
         when(sampleApi.list(null, null, null, SET_ID, SampleType.REF, null)).thenReturn(singletonList(REF_SAMPLE));
-        setupValidationVcfs(VcfComparison.Result.PASS, singleSampleRun);
+        setupValidationVcfs(VcfComparison.Result.PASS, singleSampleRun, BARCODE);
         victim.handle(stagedEvent(Type.TERTIARY, Context.DIAGNOSTIC));
         UpdateRun update = captureUpdate();
         assertThat(update.getStatus()).isEqualTo(Status.VALIDATED);
@@ -206,7 +214,7 @@ public class SnpCheckTest {
     @Test
     public void publishesTurquoiseEventOnCompletion() throws Exception {
         fullSnpcheckWithResult(VcfComparison.Result.PASS, BARCODE);
-        victim.run();
+        victim.handle(stagedEvent(Type.TERTIARY, Context.DIAGNOSTIC));
         ArgumentCaptor<PubsubMessage> pubsubMessageArgumentCaptor = ArgumentCaptor.forClass(PubsubMessage.class);
         verify(publisher).publish(pubsubMessageArgumentCaptor.capture());
         Map<Object, Object> message =
@@ -237,9 +245,13 @@ public class SnpCheckTest {
     }
 
     private void fullSnpcheckWithResult(final VcfComparison.Result result, final String barcode) {
-        when(runApi.list(Status.FINISHED, Ini.SOMATIC_INI)).thenReturn(singletonList(RUN));
-        when(sampleApi.list(null, SET_ID, SampleType.REF)).thenReturn(singletonList(REF_SAMPLE));
-        when(sampleApi.list(null, SET_ID, SampleType.TUMOR)).thenReturn(singletonList(TUMOR_SAMPLE));
+        when(runApi.get(run.getId())).thenReturn(run);
+        when(sampleApi.list(null, null, null, SET_ID, SampleType.REF, null)).thenReturn(singletonList(REF_SAMPLE));
+        when(sampleApi.list(null, null, null, SET_ID, SampleType.TUMOR, null)).thenReturn(singletonList(TUMOR_SAMPLE));
+        setupValidationVcfs(result, run, barcode);
+    }
+
+    private void setupValidationVcfs(final VcfComparison.Result result, final Run run, final String barcode) {
         Page<Blob> page = mockPage();
         Blob validationVcf = mock(Blob.class);
         when(validationVcf.getName()).thenReturn(barcode + ".vcf");
