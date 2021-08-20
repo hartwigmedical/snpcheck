@@ -167,25 +167,25 @@ public class SnpCheckTest {
     }
 
     @Test
-    public void finishedSomaticDiagnosticRunComparedToValidationVcfPass() {
-        fullSnpcheckWithResult(VcfComparison.Result.PASS);
-        victim.handle(stagedEvent(Type.TERTIARY, Context.DIAGNOSTIC));
+    public void finishedSomaticRunComparedToValidationVcfPass() {
+        fullSnpcheckWithResult(VcfComparison.Result.PASS, BARCODE);
+        victim.run();
         UpdateRun update = captureUpdate();
         assertThat(update.getStatus()).isEqualTo(Status.VALIDATED);
     }
 
     @Test
-    public void finishedSomaticServicesRunComparedToValidationVcfPass() {
-        fullSnpcheckWithResult(VcfComparison.Result.PASS);
-        victim.handle(stagedEvent(Type.TERTIARY, Context.SERVICES));
+    public void finishedSomaticRunComparedToValidationVcfPassWithSampleNameInBarcode() {
+        fullSnpcheckWithResult(VcfComparison.Result.PASS, BARCODE + "_sampler");
+        victim.run();
         UpdateRun update = captureUpdate();
         assertThat(update.getStatus()).isEqualTo(Status.VALIDATED);
     }
 
     @Test
     public void finishedSomaticRunComparedToValidationVcfFail() {
-        fullSnpcheckWithResult(VcfComparison.Result.FAIL);
-        victim.handle(stagedEvent(Type.TERTIARY, Context.DIAGNOSTIC));
+        fullSnpcheckWithResult(VcfComparison.Result.FAIL, BARCODE);
+        victim.run();
         UpdateRun update = captureUpdate();
         assertThat(update.getStatus()).isEqualTo(Status.FAILED);
         assertThat(update.getFailure()).isEqualTo(new RunFailure().source("SnpCheck").type(RunFailure.TypeEnum.QCFAILURE));
@@ -205,8 +205,8 @@ public class SnpCheckTest {
     @SuppressWarnings("unchecked")
     @Test
     public void publishesTurquoiseEventOnCompletion() throws Exception {
-        fullSnpcheckWithResult(VcfComparison.Result.PASS);
-        victim.handle(stagedEvent(Type.TERTIARY, Context.DIAGNOSTIC));
+        fullSnpcheckWithResult(VcfComparison.Result.PASS, BARCODE);
+        victim.run();
         ArgumentCaptor<PubsubMessage> pubsubMessageArgumentCaptor = ArgumentCaptor.forClass(PubsubMessage.class);
         verify(publisher).publish(pubsubMessageArgumentCaptor.capture());
         Map<Object, Object> message =
@@ -236,17 +236,13 @@ public class SnpCheckTest {
         return updateRunArgumentCaptor.getValue();
     }
 
-    private void fullSnpcheckWithResult(final VcfComparison.Result result) {
-        when(runApi.get(run.getId())).thenReturn(run);
-        when(sampleApi.list(null, null, null, SET_ID, SampleType.REF, null)).thenReturn(singletonList(REF_SAMPLE));
-        when(sampleApi.list(null, null, null, SET_ID, SampleType.TUMOR, null)).thenReturn(singletonList(TUMOR_SAMPLE));
-        setupValidationVcfs(result, run);
-    }
-
-    private void setupValidationVcfs(final VcfComparison.Result result, final Run run) {
+    private void fullSnpcheckWithResult(final VcfComparison.Result result, final String barcode) {
+        when(runApi.list(Status.FINISHED, Ini.SOMATIC_INI)).thenReturn(singletonList(RUN));
+        when(sampleApi.list(null, SET_ID, SampleType.REF)).thenReturn(singletonList(REF_SAMPLE));
+        when(sampleApi.list(null, SET_ID, SampleType.TUMOR)).thenReturn(singletonList(TUMOR_SAMPLE));
         Page<Blob> page = mockPage();
         Blob validationVcf = mock(Blob.class);
-        when(validationVcf.getName()).thenReturn(BARCODE + ".vcf");
+        when(validationVcf.getName()).thenReturn(barcode + ".vcf");
         when(page.iterateAll()).thenReturn(singletonList(validationVcf));
         when(snpcheckBucket.list(Storage.BlobListOption.prefix(SnpCheck.SNPCHECK_VCFS))).thenReturn(page);
         Bucket referenceBucket = mock(Bucket.class);
