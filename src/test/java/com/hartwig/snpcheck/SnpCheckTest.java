@@ -254,7 +254,7 @@ public class SnpCheckTest {
     private void setupValidationVcfs(final VcfComparison.Result result, final Run run, final String barcode) {
         Page<Blob> page = mockPage();
         Blob validationVcf = mock(Blob.class);
-        when(validationVcf.getName()).thenReturn(barcode + ".vcf");
+        when(validationVcf.getName()).thenReturn("/path/" + barcode + ".vcf");
         when(page.iterateAll()).thenReturn(singletonList(validationVcf));
         when(snpcheckBucket.list(Storage.BlobListOption.prefix(SnpCheck.SNPCHECK_VCFS))).thenReturn(page);
         Bucket referenceBucket = mock(Bucket.class);
