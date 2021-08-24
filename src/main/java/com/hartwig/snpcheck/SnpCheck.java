@@ -120,7 +120,11 @@ public class SnpCheck implements Handler<PipelineStaged> {
 
     private static Optional<Blob> findValidationVcf(final Iterable<Blob> valVcfs, final Sample refSample) {
         String barcode = refSample.getBarcode().split("_")[0];
-        return StreamSupport.stream(valVcfs.spliterator(), false).filter(vcf -> vcf.getName().startsWith(barcode)).findFirst();
+        return StreamSupport.stream(valVcfs.spliterator(), false).filter(vcf -> {
+            String[] splitted = vcf.getName().split("/");
+            String fileName = splitted[splitted.length-1];
+            return fileName.startsWith(barcode);
+        }).findFirst();
     }
 
     private VcfComparison.Result doComparison(final Run run, final Sample refSample, final Blob valVcf) {
