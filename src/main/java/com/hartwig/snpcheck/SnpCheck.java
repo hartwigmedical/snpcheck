@@ -7,6 +7,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.StreamSupport;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.api.gax.paging.Page;
 import com.google.cloud.pubsub.v1.Publisher;
 import com.google.cloud.storage.Blob;
@@ -26,6 +27,7 @@ import com.hartwig.events.Analysis.Context;
 import com.hartwig.events.Analysis.Type;
 import com.hartwig.events.Handler;
 import com.hartwig.events.PipelineStaged;
+import com.hartwig.events.PipelineValidated;
 import com.hartwig.snpcheck.turquoise.SnpCheckEvent;
 
 import org.slf4j.Logger;
@@ -43,16 +45,18 @@ public class SnpCheck implements Handler<PipelineStaged> {
     private final Storage pipelineStorage;
     private final VcfComparison vcfComparison;
     private final Publisher publisher;
+    private final ObjectMapper objectMapper;
     private final LabPendingBuffer labPendingBuffer;
 
     public SnpCheck(final RunApi runs, final SampleApi samples, final Bucket snpcheckBucket, final Storage pipelineStorage,
-            final VcfComparison vcfComparison, final Publisher publisher) {
+            final VcfComparison vcfComparison, final Publisher publisher, final ObjectMapper objectMapper) {
         this.runs = runs;
         this.samples = samples;
         this.snpcheckBucket = snpcheckBucket;
         this.pipelineStorage = pipelineStorage;
         this.vcfComparison = vcfComparison;
         this.publisher = publisher;
+        this.objectMapper = objectMapper;
         this.labPendingBuffer = new LabPendingBuffer(this, Executors.newScheduledThreadPool(1), TimeUnit.HOURS, 1);
     }
 
@@ -80,6 +84,17 @@ public class SnpCheck implements Handler<PipelineStaged> {
                                         .result(result.name().toLowerCase())
                                         .build()
                                         .publish();
+                                PipelineValidated.builder()
+                                        .analysisContext(event.analysisContext())
+                                        .analysisType(event.analysisType())
+                                        .sample(event.sample())
+                                        .analysisMolecule(event.analysisMolecule())
+                                        .version(event.version())
+                                        .runId(event.runId())
+                                        .setId(event.setId())
+                                        .blobs(event.blobs())
+                                        .build().publish(publisher, objectMapper);
+
                             } else {
                                 LOGGER.info("No validation VCF available for set [{}].", run.getSet().getName());
                                 labPendingBuffer.add(event);
