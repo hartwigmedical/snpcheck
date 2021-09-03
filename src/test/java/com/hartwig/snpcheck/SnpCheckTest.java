@@ -1,5 +1,6 @@
 package com.hartwig.snpcheck;
 
+import static java.lang.String.format;
 import static java.util.Collections.emptyList;
 import static java.util.Collections.singletonList;
 
@@ -49,6 +50,8 @@ import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
 
+import junit.framework.AssertionFailedError;
+
 public class SnpCheckTest {
 
     private static final long SET_ID = 2L;
@@ -56,13 +59,6 @@ public class SnpCheckTest {
     private static final String BARCODE = "barcode";
     private static final Sample REF_SAMPLE = new Sample().barcode(BARCODE).name("sampler");
     private static final Sample TUMOR_SAMPLE = new Sample().barcode(BARCODE).name("samplet");
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-
-    static {
-        OBJECT_MAPPER.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-        OBJECT_MAPPER.registerModule(new JavaTimeModule());
-        OBJECT_MAPPER.registerModule(new Jdk8Module());
-    }
 
     private Run run;
     private RunApi runApi;
@@ -73,6 +69,14 @@ public class SnpCheckTest {
     private Publisher publisher;
     private SnpCheck victim;
     private PipelineOutputBlob outputBlob;
+
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
+    static {
+        OBJECT_MAPPER.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+        OBJECT_MAPPER.registerModule(new JavaTimeModule());
+        OBJECT_MAPPER.registerModule(new Jdk8Module());
+    }
 
     @Before
     public void setUp() {
@@ -85,7 +89,14 @@ public class SnpCheckTest {
         publisher = mock(Publisher.class);
         //noinspection unchecked
         when(publisher.publish(any())).thenReturn(mock(ApiFuture.class));
-        outputBlob = PipelineOutputBlob.builder().barcode("bc").bucket("bucket").root("root").filename("filename").filesize(11).hash("hash").build();
+        outputBlob = PipelineOutputBlob.builder()
+                .barcode("bc")
+                .bucket("bucket")
+                .root("root")
+                .filename("filename")
+                .filesize(11)
+                .hash("hash")
+                .build();
         victim = new SnpCheck(runApi, sampleApi, snpcheckBucket, pipelineStorage, vcfComparison, publisher, OBJECT_MAPPER);
     }
 
@@ -231,20 +242,11 @@ public class SnpCheckTest {
         victim.handle(stagedEvent(Type.TERTIARY, Context.DIAGNOSTIC));
         ArgumentCaptor<PubsubMessage> pubsubMessageArgumentCaptor = ArgumentCaptor.forClass(PubsubMessage.class);
         verify(publisher, times(2)).publish(pubsubMessageArgumentCaptor.capture());
-        boolean foundTurquoiseEvent = false;
-        for (PubsubMessage rawMessage: pubsubMessageArgumentCaptor.getAllValues()) {
-            Map<Object, Object> message =
-                    new ObjectMapper().readValue(new String(rawMessage.getData().toByteArray()), new TypeReference<>() {
-                    });
-            if (message.keySet().contains("type")) {
-                assertThat(message.get("type")).isEqualTo("snpcheck.completed");
-                List<Map<String, String>> subjects = (List<Map<String, String>>) message.get("subjects");
-                assertThat(subjects.get(0).get("name")).isEqualTo("samplet");
-                assertThat(subjects.get(0).get("type")).isEqualTo("sample");
-                foundTurquoiseEvent = true;
-            }
-        }
-        assertThat(foundTurquoiseEvent).isTrue();
+        Map<Object, Object> message = extractEventWithKey(pubsubMessageArgumentCaptor.getAllValues(), "type");
+        assertThat(message.get("type")).isEqualTo("snpcheck.completed");
+        List<Map<String, String>> subjects = (List<Map<String, String>>) message.get("subjects");
+        assertThat(subjects.get(0).get("name")).isEqualTo("samplet");
+        assertThat(subjects.get(0).get("type")).isEqualTo("sample");
     }
 
     @SuppressWarnings("unchecked")
@@ -254,26 +256,29 @@ public class SnpCheckTest {
         victim.handle(stagedEvent(Type.TERTIARY, Context.DIAGNOSTIC));
         ArgumentCaptor<PubsubMessage> pubsubMessageArgumentCaptor = ArgumentCaptor.forClass(PubsubMessage.class);
         verify(publisher, times(2)).publish(pubsubMessageArgumentCaptor.capture());
-        boolean foundValidatedEvent = false;
-        for (PubsubMessage rawMessage: pubsubMessageArgumentCaptor.getAllValues()) {
+        Map<Object, Object> message = extractEventWithKey(pubsubMessageArgumentCaptor.getAllValues(), "originalEvent");
+        Map<Object, Object> wrappedMessage = (Map<Object, Object>) message.get("originalEvent");
+        assertThat(wrappedMessage.get("analysisType")).isEqualTo(Type.TERTIARY.toString());
+        assertThat(wrappedMessage.get("analysisContext")).isEqualTo(Context.DIAGNOSTIC.toString());
+        assertThat(wrappedMessage.get("sample")).isEqualTo("samplet");
+        assertThat(wrappedMessage.get("analysisMolecule")).isEqualTo("DNA");
+        assertThat(wrappedMessage.get("version")).isEqualTo("version");
+        assertThat(wrappedMessage.get("runId")).isEqualTo(1);
+        assertThat(wrappedMessage.get("setId")).isEqualTo(2);
+        List<Map<String, Object>> blobs = (List<Map<String, Object>>) wrappedMessage.get("blobs");
+        assertThat(blobs.get(0).get("filesize")).isEqualTo(11);
+        assertThat(blobs.get(0).get("barcode")).isEqualTo("bc");
+    }
+
+    private Map<Object, Object> extractEventWithKey(List<PubsubMessage> allMessages, String telltaleKey) throws Exception {
+        for (PubsubMessage rawMessage: allMessages) {
             Map<Object, Object> message =
-                    new ObjectMapper().readValue(new String(rawMessage.getData().toByteArray()), new TypeReference<>() {
-                    });
-            if (message.keySet().contains("analysisContext")) {
-                assertThat(message.get("analysisType")).isEqualTo(Type.TERTIARY.toString());
-                assertThat(message.get("analysisContext")).isEqualTo(Context.DIAGNOSTIC.toString());
-                assertThat(message.get("sample")).isEqualTo("samplet");
-                assertThat(message.get("analysisMolecule")).isEqualTo("DNA");
-                assertThat(message.get("version")).isEqualTo("version");
-                assertThat(message.get("runId")).isEqualTo(1);
-                assertThat(message.get("setId")).isEqualTo(2);
-                List<Map<String, Object>> blobs = (List<Map<String, Object>>) message.get("blobs");
-                assertThat(blobs.get(0).get("filesize")).isEqualTo(11);
-                assertThat(blobs.get(0).get("barcode")).isEqualTo("bc");
-                foundValidatedEvent = true;
+                    OBJECT_MAPPER.readValue(new String(rawMessage.getData().toByteArray()), new TypeReference<>() {});
+            if (message.containsKey(telltaleKey)) {
+                return message;
             }
         }
-        assertThat(foundValidatedEvent).isTrue();
+        throw new AssertionFailedError(format("No message with key \"%s\"!", telltaleKey));
     }
 
     @SuppressWarnings("unchecked")
