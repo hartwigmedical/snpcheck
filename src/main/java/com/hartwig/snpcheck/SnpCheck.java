@@ -62,8 +62,7 @@ public class SnpCheck implements Handler<PipelineStaged> {
 
     public void handle(final PipelineStaged event) {
         try {
-            if (event.analysisType().equals(Type.TERTIARY) && (event.analysisContext().equals(Context.DIAGNOSTIC) || event.analysisContext()
-                    .equals(Context.SERVICES))) {
+            if (event.analysisType().equals(Type.TERTIARY) && !event.analysisContext().equals(Context.SHALLOW)) {
                 Run run = runs.get(event.runId().orElseThrow());
                 if (run.getIni().equals(Ini.SOMATIC_INI.getValue()) || run.getIni().equals(Ini.SINGLESAMPLE_INI.getValue())) {
                     LOGGER.info("Received a SnpCheck candidate [{}]", run.getSet().getName());
@@ -84,17 +83,7 @@ public class SnpCheck implements Handler<PipelineStaged> {
                                         .result(result.name().toLowerCase())
                                         .build()
                                         .publish();
-                                PipelineValidated.builder()
-                                        .analysisContext(event.analysisContext())
-                                        .analysisType(event.analysisType())
-                                        .sample(event.sample())
-                                        .analysisMolecule(event.analysisMolecule())
-                                        .version(event.version())
-                                        .runId(event.runId())
-                                        .setId(event.setId())
-                                        .blobs(event.blobs())
-                                        .build().publish(publisher, objectMapper);
-
+                                PipelineValidated.builder().originalEvent(event).build().publish(publisher, objectMapper);
                             } else {
                                 LOGGER.info("No validation VCF available for set [{}].", run.getSet().getName());
                                 labPendingBuffer.add(event);
