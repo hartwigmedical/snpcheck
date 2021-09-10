@@ -1,5 +1,6 @@
 package com.hartwig.snpcheck;
 
+import static java.lang.String.format;
 import static java.util.Collections.emptyList;
 import static java.util.Collections.singletonList;
 
@@ -16,7 +17,10 @@ import java.util.List;
 import java.util.Map;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.google.api.core.ApiFuture;
 import com.google.api.gax.paging.Page;
 import com.google.cloud.pubsub.v1.Publisher;
@@ -39,11 +43,14 @@ import com.hartwig.events.Analysis.Context;
 import com.hartwig.events.Analysis.Molecule;
 import com.hartwig.events.Analysis.Type;
 import com.hartwig.events.ImmutablePipelineStaged;
+import com.hartwig.events.PipelineOutputBlob;
 import com.hartwig.events.PipelineStaged;
 
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
+
+import junit.framework.AssertionFailedError;
 
 public class SnpCheckTest {
 
@@ -52,6 +59,7 @@ public class SnpCheckTest {
     private static final String BARCODE = "barcode";
     private static final Sample REF_SAMPLE = new Sample().barcode(BARCODE).name("sampler");
     private static final Sample TUMOR_SAMPLE = new Sample().barcode(BARCODE).name("samplet");
+
     private Run run;
     private RunApi runApi;
     private SampleApi sampleApi;
@@ -60,6 +68,15 @@ public class SnpCheckTest {
     private VcfComparison vcfComparison;
     private Publisher publisher;
     private SnpCheck victim;
+    private PipelineOutputBlob outputBlob;
+
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
+    static {
+        OBJECT_MAPPER.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+        OBJECT_MAPPER.registerModule(new JavaTimeModule());
+        OBJECT_MAPPER.registerModule(new Jdk8Module());
+    }
 
     @Before
     public void setUp() {
@@ -72,7 +89,15 @@ public class SnpCheckTest {
         publisher = mock(Publisher.class);
         //noinspection unchecked
         when(publisher.publish(any())).thenReturn(mock(ApiFuture.class));
-        victim = new SnpCheck(runApi, sampleApi, snpcheckBucket, pipelineStorage, vcfComparison, publisher);
+        outputBlob = PipelineOutputBlob.builder()
+                .barcode("bc")
+                .bucket("bucket")
+                .root("root")
+                .filename("filename")
+                .filesize(11)
+                .hash("hash")
+                .build();
+        victim = new SnpCheck(runApi, sampleApi, snpcheckBucket, pipelineStorage, vcfComparison, publisher, OBJECT_MAPPER);
     }
 
     private Run run(final Ini somaticIni) {
@@ -216,15 +241,44 @@ public class SnpCheckTest {
         fullSnpcheckWithResult(VcfComparison.Result.PASS, BARCODE);
         victim.handle(stagedEvent(Type.TERTIARY, Context.DIAGNOSTIC));
         ArgumentCaptor<PubsubMessage> pubsubMessageArgumentCaptor = ArgumentCaptor.forClass(PubsubMessage.class);
-        verify(publisher).publish(pubsubMessageArgumentCaptor.capture());
-        Map<Object, Object> message =
-                new ObjectMapper().readValue(new String(pubsubMessageArgumentCaptor.getValue().getData().toByteArray()),
-                        new TypeReference<>() {
-                        });
+        verify(publisher, times(2)).publish(pubsubMessageArgumentCaptor.capture());
+        Map<Object, Object> message = extractEventWithKey(pubsubMessageArgumentCaptor.getAllValues(), "type");
         assertThat(message.get("type")).isEqualTo("snpcheck.completed");
         List<Map<String, String>> subjects = (List<Map<String, String>>) message.get("subjects");
         assertThat(subjects.get(0).get("name")).isEqualTo("samplet");
         assertThat(subjects.get(0).get("type")).isEqualTo("sample");
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test
+    public void publishesPipelineValidatedEventOnCompletion() throws Exception {
+        fullSnpcheckWithResult(VcfComparison.Result.PASS, BARCODE);
+        victim.handle(stagedEvent(Type.TERTIARY, Context.DIAGNOSTIC));
+        ArgumentCaptor<PubsubMessage> pubsubMessageArgumentCaptor = ArgumentCaptor.forClass(PubsubMessage.class);
+        verify(publisher, times(2)).publish(pubsubMessageArgumentCaptor.capture());
+        Map<Object, Object> message = extractEventWithKey(pubsubMessageArgumentCaptor.getAllValues(), "originalEvent");
+        Map<Object, Object> wrappedMessage = (Map<Object, Object>) message.get("originalEvent");
+        assertThat(wrappedMessage.get("analysisType")).isEqualTo(Type.TERTIARY.toString());
+        assertThat(wrappedMessage.get("analysisContext")).isEqualTo(Context.DIAGNOSTIC.toString());
+        assertThat(wrappedMessage.get("sample")).isEqualTo("samplet");
+        assertThat(wrappedMessage.get("analysisMolecule")).isEqualTo("DNA");
+        assertThat(wrappedMessage.get("version")).isEqualTo("version");
+        assertThat(wrappedMessage.get("runId")).isEqualTo(1);
+        assertThat(wrappedMessage.get("setId")).isEqualTo(2);
+        List<Map<String, Object>> blobs = (List<Map<String, Object>>) wrappedMessage.get("blobs");
+        assertThat(blobs.get(0).get("filesize")).isEqualTo(11);
+        assertThat(blobs.get(0).get("barcode")).isEqualTo("bc");
+    }
+
+    private Map<Object, Object> extractEventWithKey(List<PubsubMessage> allMessages, String telltaleKey) throws Exception {
+        for (PubsubMessage rawMessage: allMessages) {
+            Map<Object, Object> message =
+                    OBJECT_MAPPER.readValue(new String(rawMessage.getData().toByteArray()), new TypeReference<>() {});
+            if (message.containsKey(telltaleKey)) {
+                return message;
+            }
+        }
+        throw new AssertionFailedError(format("No message with key \"%s\"!", telltaleKey));
     }
 
     @SuppressWarnings("unchecked")
@@ -264,7 +318,7 @@ public class SnpCheckTest {
         when(vcfComparison.compare(run, referenceVcf, validationVcf)).thenReturn(result);
     }
 
-    private static ImmutablePipelineStaged stagedEvent(final Analysis.Type type, final Analysis.Context context) {
+    private ImmutablePipelineStaged stagedEvent(final Analysis.Type type, final Analysis.Context context) {
         return PipelineStaged.builder()
                 .analysisType(type)
                 .sample(TUMOR_SAMPLE.getName())
@@ -273,6 +327,7 @@ public class SnpCheckTest {
                 .analysisMolecule(Molecule.DNA)
                 .setId(SET_ID)
                 .runId(RUN_ID)
+                .blobs(List.of(outputBlob))
                 .build();
     }
 }

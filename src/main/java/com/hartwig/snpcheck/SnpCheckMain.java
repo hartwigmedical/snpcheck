@@ -3,6 +3,10 @@ package com.hartwig.snpcheck;
 import java.io.FileInputStream;
 import java.util.concurrent.Callable;
 
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.google.auth.oauth2.GoogleCredentials;
 import com.google.cloud.pubsub.v1.Publisher;
 import com.google.cloud.storage.Bucket;
@@ -42,6 +46,14 @@ public class SnpCheckMain implements Callable<Integer> {
                         description = "Project in which the snpcheck is running")
     private String project;
 
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
+    static {
+        OBJECT_MAPPER.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+        OBJECT_MAPPER.registerModule(new JavaTimeModule());
+        OBJECT_MAPPER.registerModule(new Jdk8Module());
+    }
+
     @Override
     public Integer call() {
         try {
@@ -63,7 +75,7 @@ public class SnpCheckMain implements Callable<Integer> {
                             new PerlVcfComparison(),
                             Publisher.newBuilder(ProjectTopicName.of(project, "turquoise.events"))
                                     .setCredentialsProvider(() -> snpCheckCredentials)
-                                    .build()));
+                                    .build(), OBJECT_MAPPER));
             return 0;
         } catch (Exception e) {
             LOGGER.error("Exception while running snpcheck", e);
