@@ -44,18 +44,21 @@ public class SnpCheck implements Handler<PipelineStaged> {
     private final Bucket snpcheckBucket;
     private final Storage pipelineStorage;
     private final VcfComparison vcfComparison;
-    private final Publisher publisher;
+    private final Publisher turquoiseTopicPublisher;
+    private final Publisher validatedTopicPublisher;
     private final ObjectMapper objectMapper;
     private final LabPendingBuffer labPendingBuffer;
 
     public SnpCheck(final RunApi runs, final SampleApi samples, final Bucket snpcheckBucket, final Storage pipelineStorage,
-            final VcfComparison vcfComparison, final Publisher publisher, final ObjectMapper objectMapper) {
+            final VcfComparison vcfComparison, final Publisher publisher, final Publisher validatedTopicPublisher,
+            final ObjectMapper objectMapper) {
         this.runs = runs;
         this.samples = samples;
         this.snpcheckBucket = snpcheckBucket;
         this.pipelineStorage = pipelineStorage;
         this.vcfComparison = vcfComparison;
-        this.publisher = publisher;
+        this.turquoiseTopicPublisher = publisher;
+        this.validatedTopicPublisher = validatedTopicPublisher;
         this.objectMapper = objectMapper;
         this.labPendingBuffer = new LabPendingBuffer(this, Executors.newScheduledThreadPool(1), TimeUnit.HOURS, 1);
     }
@@ -65,7 +68,7 @@ public class SnpCheck implements Handler<PipelineStaged> {
             if (event.analysisType().equals(Type.TERTIARY) && !event.analysisContext().equals(Context.SHALLOW)) {
                 Run run = runs.get(event.runId().orElseThrow());
                 if (run.getIni().equals(Ini.SOMATIC_INI.getValue()) || run.getIni().equals(Ini.SINGLESAMPLE_INI.getValue())) {
-                    LOGGER.info("Received a SnpCheck candidate [{}]", run.getSet().getName());
+                    LOGGER.info("Received a SnpCheck candidate [{}] for run [{}]", run.getSet().getName(), run.getId());
                     if (waitForFinished(run)) {
                         Iterable<Blob> valVcfs = Optional.ofNullable(snpcheckBucket.list(Storage.BlobListOption.prefix(SNPCHECK_VCFS)))
                                 .map(Page::iterateAll)
@@ -78,12 +81,12 @@ public class SnpCheck implements Handler<PipelineStaged> {
                             if (maybeValVcf.isPresent()) {
                                 VcfComparison.Result result = doComparison(run, refSample, maybeValVcf.get());
                                 SnpCheckEvent.builder()
-                                        .publisher(publisher)
+                                        .publisher(turquoiseTopicPublisher)
                                         .sample(maybeTumorSample.map(Sample::getName).orElse(refSample.getName()))
                                         .result(result.name().toLowerCase())
                                         .build()
                                         .publish();
-                                PipelineValidated.builder().originalEvent(event).build().publish(publisher, objectMapper);
+                                PipelineValidated.builder().originalEvent(event).build().publish(validatedTopicPublisher, objectMapper);
                             } else {
                                 LOGGER.info("No validation VCF available for set [{}].", run.getSet().getName());
                                 labPendingBuffer.add(event);
@@ -126,7 +129,7 @@ public class SnpCheck implements Handler<PipelineStaged> {
         String barcode = refSample.getBarcode().split("_")[0];
         return StreamSupport.stream(valVcfs.spliterator(), false).filter(vcf -> {
             String[] splitted = vcf.getName().split("/");
-            String fileName = splitted[splitted.length-1];
+            String fileName = splitted[splitted.length - 1];
             return fileName.startsWith(barcode);
         }).findFirst();
     }

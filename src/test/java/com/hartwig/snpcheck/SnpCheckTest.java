@@ -5,11 +5,11 @@ import static java.util.Collections.emptyList;
 import static java.util.Collections.singletonList;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.fail;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -66,7 +66,8 @@ public class SnpCheckTest {
     private Storage pipelineStorage;
     private Bucket snpcheckBucket;
     private VcfComparison vcfComparison;
-    private Publisher publisher;
+    private Publisher turquoiseTopicPublisher;
+    private Publisher validatedTopicPublisher;
     private SnpCheck victim;
     private PipelineOutputBlob outputBlob;
 
@@ -86,9 +87,10 @@ public class SnpCheckTest {
         pipelineStorage = mock(Storage.class);
         snpcheckBucket = mock(Bucket.class);
         vcfComparison = mock(VcfComparison.class);
-        publisher = mock(Publisher.class);
+        turquoiseTopicPublisher = mock(Publisher.class);
+        validatedTopicPublisher = mock(Publisher.class);
         //noinspection unchecked
-        when(publisher.publish(any())).thenReturn(mock(ApiFuture.class));
+        when(turquoiseTopicPublisher.publish(any())).thenReturn(mock(ApiFuture.class));
         outputBlob = PipelineOutputBlob.builder()
                 .barcode("bc")
                 .bucket("bucket")
@@ -97,7 +99,14 @@ public class SnpCheckTest {
                 .filesize(11)
                 .hash("hash")
                 .build();
-        victim = new SnpCheck(runApi, sampleApi, snpcheckBucket, pipelineStorage, vcfComparison, publisher, OBJECT_MAPPER);
+        victim = new SnpCheck(runApi,
+                sampleApi,
+                snpcheckBucket,
+                pipelineStorage,
+                vcfComparison,
+                turquoiseTopicPublisher,
+                validatedTopicPublisher,
+                OBJECT_MAPPER);
     }
 
     private Run run(final Ini somaticIni) {
@@ -241,7 +250,7 @@ public class SnpCheckTest {
         fullSnpcheckWithResult(VcfComparison.Result.PASS, BARCODE);
         victim.handle(stagedEvent(Type.TERTIARY, Context.DIAGNOSTIC));
         ArgumentCaptor<PubsubMessage> pubsubMessageArgumentCaptor = ArgumentCaptor.forClass(PubsubMessage.class);
-        verify(publisher, times(2)).publish(pubsubMessageArgumentCaptor.capture());
+        verify(turquoiseTopicPublisher, times(1)).publish(pubsubMessageArgumentCaptor.capture());
         Map<Object, Object> message = extractEventWithKey(pubsubMessageArgumentCaptor.getAllValues(), "type");
         assertThat(message.get("type")).isEqualTo("snpcheck.completed");
         List<Map<String, String>> subjects = (List<Map<String, String>>) message.get("subjects");
@@ -255,7 +264,7 @@ public class SnpCheckTest {
         fullSnpcheckWithResult(VcfComparison.Result.PASS, BARCODE);
         victim.handle(stagedEvent(Type.TERTIARY, Context.DIAGNOSTIC));
         ArgumentCaptor<PubsubMessage> pubsubMessageArgumentCaptor = ArgumentCaptor.forClass(PubsubMessage.class);
-        verify(publisher, times(2)).publish(pubsubMessageArgumentCaptor.capture());
+        verify(validatedTopicPublisher, times(1)).publish(pubsubMessageArgumentCaptor.capture());
         Map<Object, Object> message = extractEventWithKey(pubsubMessageArgumentCaptor.getAllValues(), "originalEvent");
         Map<Object, Object> wrappedMessage = (Map<Object, Object>) message.get("originalEvent");
         assertThat(wrappedMessage.get("analysisType")).isEqualTo(Type.TERTIARY.toString());
@@ -271,9 +280,9 @@ public class SnpCheckTest {
     }
 
     private Map<Object, Object> extractEventWithKey(List<PubsubMessage> allMessages, String telltaleKey) throws Exception {
-        for (PubsubMessage rawMessage: allMessages) {
-            Map<Object, Object> message =
-                    OBJECT_MAPPER.readValue(new String(rawMessage.getData().toByteArray()), new TypeReference<>() {});
+        for (PubsubMessage rawMessage : allMessages) {
+            Map<Object, Object> message = OBJECT_MAPPER.readValue(new String(rawMessage.getData().toByteArray()), new TypeReference<>() {
+            });
             if (message.containsKey(telltaleKey)) {
                 return message;
             }

@@ -15,6 +15,7 @@ import com.google.pubsub.v1.ProjectTopicName;
 import com.hartwig.api.HmfApi;
 import com.hartwig.events.EventSubscriber;
 import com.hartwig.events.PipelineStaged;
+import com.hartwig.events.PipelineValidated;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -66,8 +67,10 @@ public class SnpCheckMain implements Callable<Integer> {
                 LOGGER.error("Bucket [{}] does not exist. ", snpcheckBucketName);
                 return 1;
             }
-            EventSubscriber.create(project, snpCheckCredentials,
-                    PipelineStaged.subscription(project, "snpcheck", snpCheckCredentials), PipelineStaged.class)
+            EventSubscriber.create(project,
+                    snpCheckCredentials,
+                    PipelineStaged.subscription(project, "snpcheck", snpCheckCredentials),
+                    PipelineStaged.class)
                     .subscribe(new SnpCheck(hmfApi.runs(),
                             hmfApi.samples(),
                             snpcheckBucket,
@@ -75,7 +78,11 @@ public class SnpCheckMain implements Callable<Integer> {
                             new PerlVcfComparison(),
                             Publisher.newBuilder(ProjectTopicName.of(project, "turquoise.events"))
                                     .setCredentialsProvider(() -> snpCheckCredentials)
-                                    .build(), OBJECT_MAPPER));
+                                    .build(),
+                            Publisher.newBuilder(ProjectTopicName.of(project, PipelineValidated.TOPIC))
+                                    .setCredentialsProvider(() -> snpCheckCredentials)
+                                    .build(),
+                            OBJECT_MAPPER));
             return 0;
         } catch (Exception e) {
             LOGGER.error("Exception while running snpcheck", e);
