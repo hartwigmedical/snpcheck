@@ -9,10 +9,6 @@ import java.nio.file.Paths;
 
 import com.google.cloud.storage.Blob;
 import com.hartwig.api.model.Run;
-import com.hartwig.api.model.Sample;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 public class PerlVcfComparison implements VcfComparison {
 
@@ -23,8 +19,12 @@ public class PerlVcfComparison implements VcfComparison {
             if (!Files.exists(workingDirectory)) {
                 Files.createDirectory(workingDirectory);
             }
-            Path valVcfLocal = Files.write(createFile(workingDirectory.resolve("val.vcf")), valVcf.getContent());
-            Path refVcfLocal = Files.write(createFile(workingDirectory.resolve("ref.vcf")), refVcf.getContent());
+            Path valVcfLocal = workingDirectory.resolve("val.vcf");
+            Path refVcfLocal = workingDirectory.resolve("ref.vcf");
+            Files.deleteIfExists(valVcfLocal);
+            Files.deleteIfExists(refVcfLocal);
+            Files.write(createFile(valVcfLocal), valVcf.getContent());
+            Files.write(createFile(refVcfLocal), refVcf.getContent());
             Process perlScriptExecution =
                     new ProcessBuilder().command("./snpcheck_compare_vcfs", refVcfLocal.toString(), valVcfLocal.toString())
                             .inheritIO()
