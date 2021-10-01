@@ -28,6 +28,7 @@ import com.hartwig.events.Analysis.Type;
 import com.hartwig.events.Handler;
 import com.hartwig.events.PipelineStaged;
 import com.hartwig.events.PipelineValidated;
+import com.hartwig.snpcheck.VcfComparison.Result;
 import com.hartwig.snpcheck.turquoise.SnpCheckEvent;
 
 import org.slf4j.Logger;
@@ -86,7 +87,9 @@ public class SnpCheck implements Handler<PipelineStaged> {
                                         .result(result.name().toLowerCase())
                                         .build()
                                         .publish();
-                                PipelineValidated.builder().originalEvent(event).build().publish(validatedTopicPublisher, objectMapper);
+                                if (result.equals(Result.PASS)) {
+                                    PipelineValidated.builder().originalEvent(event).build().publish(validatedTopicPublisher, objectMapper);
+                                }
                             } else {
                                 LOGGER.info("No validation VCF available for set [{}].", run.getSet().getName());
                                 labPendingBuffer.add(event);
