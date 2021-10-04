@@ -34,6 +34,7 @@ import com.hartwig.api.SampleApi;
 import com.hartwig.api.model.Ini;
 import com.hartwig.api.model.Run;
 import com.hartwig.api.model.RunFailure;
+import com.hartwig.api.model.RunFailure.TypeEnum;
 import com.hartwig.api.model.RunSet;
 import com.hartwig.api.model.Sample;
 import com.hartwig.api.model.SampleType;
@@ -93,6 +94,7 @@ public class SnpCheckTest {
         validatedTopicPublisher = mock(Publisher.class);
         //noinspection unchecked
         when(turquoiseTopicPublisher.publish(any())).thenReturn(mock(ApiFuture.class));
+        when(validatedTopicPublisher.publish(any())).thenReturn(mock(ApiFuture.class));
         when(runApi.get(RUN_ID)).thenReturn(run);
         outputBlob = PipelineOutputBlob.builder()
                 .barcode("bc")
@@ -176,7 +178,8 @@ public class SnpCheckTest {
         victim.handle(stagedEvent(Type.TERTIARY, Context.DIAGNOSTIC));
         ArgumentCaptor<PubsubMessage> pubsubMessageArgumentCaptor = ArgumentCaptor.forClass(PubsubMessage.class);
         verify(validatedTopicPublisher, times(1)).publish(pubsubMessageArgumentCaptor.capture());
-        assertWrappedOriginalEvent(extractEventWithKey(pubsubMessageArgumentCaptor.getAllValues(), "originalEvent"));
+        assertWrappedOriginalEvent(extractEventWithKey(pubsubMessageArgumentCaptor.getAllValues(), "originalEvent"),
+                Context.DIAGNOSTIC, Type.TERTIARY);
         verify(runApi, never()).update(any(), any());
         verify(vcfComparison, never()).compare(any(), any(), any());
     }
@@ -242,6 +245,51 @@ public class SnpCheckTest {
     @Test
     public void noEventPublishedOnSnpCheckFailureOfServicesTertiary() {
         setupSnpcheckFailAndVerifyApiUpdateButNoEvents(stagedEvent(Type.TERTIARY, Context.SERVICES));
+    }
+
+    @Test
+    public void eventPublishedButRunStaysFailedOnSnpCheckSuccessAfterDiagnosticSecondaryHealthcheckFailure() {
+        setupHealthcheckPassAndVerifyNoApiUpdateButEvent(stagedEvent(Type.SECONDARY, Context.DIAGNOSTIC), Context.DIAGNOSTIC, Type.SECONDARY);
+    }
+
+    @Test
+    public void eventPublishedButRunStaysFailedOnSnpCheckSuccessAfterDiagnosticGermlineHealthcheckFailure() {
+        setupHealthcheckPassAndVerifyNoApiUpdateButEvent(stagedEvent(Type.GERMLINE, Context.DIAGNOSTIC), Context.DIAGNOSTIC, Type.GERMLINE);
+    }
+
+    @Test
+    public void eventPublishedButRunStaysFailedOnSnpCheckSuccessAfterDiagnosticTertiaryHealthcheckFailure() {
+        setupHealthcheckPassAndVerifyNoApiUpdateButEvent(stagedEvent(Type.TERTIARY, Context.DIAGNOSTIC), Context.DIAGNOSTIC, Type.TERTIARY);
+    }
+
+    @Test
+    public void eventPublishedButRunStaysFailedOnSnpCheckSuccessAfterResearchSecondaryHealthcheckFailure() {
+        setupHealthcheckPassAndVerifyNoApiUpdateButEvent(stagedEvent(Type.SECONDARY, Context.RESEARCH), Context.RESEARCH, Type.SECONDARY);
+    }
+
+    @Test
+    public void eventPublishedButRunStaysFailedOnSnpCheckSuccessAfterResearchGermlineHealthcheckFailure() {
+        setupHealthcheckPassAndVerifyNoApiUpdateButEvent(stagedEvent(Type.GERMLINE, Context.RESEARCH), Context.RESEARCH, Type.GERMLINE);
+    }
+
+    @Test
+    public void eventPublishedButRunStaysFailedOnSnpCheckSuccessAfterResearchTertiaryHealthcheckFailure() {
+        setupHealthcheckPassAndVerifyNoApiUpdateButEvent(stagedEvent(Type.TERTIARY, Context.RESEARCH), Context.RESEARCH, Type.TERTIARY);
+    }
+
+    @Test
+    public void eventPublishedButRunStaysFailedOnSnpCheckSuccessAfterServicesSecondaryHealthcheckFailure() {
+        setupHealthcheckPassAndVerifyNoApiUpdateButEvent(stagedEvent(Type.SECONDARY, Context.SERVICES), Context.SERVICES, Type.SECONDARY);
+    }
+
+    @Test
+    public void eventPublishedButRunStaysFailedOnSnpCheckSuccessAfterServicesGermlineHealthcheckFailure() {
+        setupHealthcheckPassAndVerifyNoApiUpdateButEvent(stagedEvent(Type.GERMLINE, Context.SERVICES), Context.SERVICES, Type.GERMLINE);
+    }
+
+    @Test
+    public void eventPublishedButRunStaysFailedOnSnpCheckSuccessAfterServicesTertiaryHealthcheckFailure() {
+        setupHealthcheckPassAndVerifyNoApiUpdateButEvent(stagedEvent(Type.TERTIARY, Context.SERVICES), Context.SERVICES, Type.TERTIARY);
     }
 
     @Test
@@ -345,7 +393,8 @@ public class SnpCheckTest {
         victim.handle(stagedEvent(Type.TERTIARY, Context.DIAGNOSTIC));
         ArgumentCaptor<PubsubMessage> pubsubMessageArgumentCaptor = ArgumentCaptor.forClass(PubsubMessage.class);
         verify(validatedTopicPublisher, times(1)).publish(pubsubMessageArgumentCaptor.capture());
-        assertWrappedOriginalEvent(extractEventWithKey(pubsubMessageArgumentCaptor.getAllValues(), "originalEvent"));
+        assertWrappedOriginalEvent(extractEventWithKey(pubsubMessageArgumentCaptor.getAllValues(), "originalEvent"),
+                Context.DIAGNOSTIC, Type.TERTIARY);
     }
 
     private void setupSnpcheckPassAndVerifyApiAndEventUpdates(PipelineStaged event) {
@@ -366,28 +415,48 @@ public class SnpCheckTest {
         verify(runApi).update(eq(RUN_ID), any(UpdateRun.class));
     }
 
+    private void setupHealthcheckPassAndVerifyNoApiUpdateButEvent(PipelineStaged event, Context context, Type type) {
+        setupHealthcheckAndVerifyNoApiUpdateButEvent(event, context, type, Result.PASS);
+    }
+
+    private void setupHealthcheckAndVerifyNoApiUpdateButEvent(PipelineStaged event, Context context, Type type, Result snpCheckResult) {
+        run = run.status(Status.FAILED).failure(new RunFailure().type(TypeEnum.QCFAILURE));
+        when(sampleApi.list(null, null, null, SET_ID, SampleType.REF, null)).thenReturn(singletonList(REF_SAMPLE));
+        when(sampleApi.list(null, null, null, SET_ID, SampleType.TUMOR, null)).thenReturn(singletonList(TUMOR_SAMPLE));
+        setupValidationVcfs(snpCheckResult, run, BARCODE);
+        victim.handle(event);
+        verify(runApi, never()).update(any(), any());
+        ArgumentCaptor<PubsubMessage> pubsubMessageArgumentCaptor = ArgumentCaptor.forClass(PubsubMessage.class);
+        verify(validatedTopicPublisher, times(1)).publish(pubsubMessageArgumentCaptor.capture());
+        assertWrappedOriginalEvent(extractEventWithKey(pubsubMessageArgumentCaptor.getAllValues(), "originalEvent"), context, type);
+    }
+
     private void handleAndVerifyNoApiOrEventUpdates(PipelineStaged event) {
         victim.handle(event);
         verify(runApi, never()).update(any(), any());
         verify(vcfComparison, never()).compare(any(), any(), any());
     }
 
-    private Map<Object, Object> extractEventWithKey(List<PubsubMessage> allMessages, String telltaleKey) throws Exception {
+    private Map<Object, Object> extractEventWithKey(List<PubsubMessage> allMessages, String telltaleKey) {
         for (PubsubMessage rawMessage : allMessages) {
-            Map<Object, Object> message = OBJECT_MAPPER.readValue(new String(rawMessage.getData().toByteArray()), new TypeReference<>() {
-            });
-            if (message.containsKey(telltaleKey)) {
-                return message;
+            try {
+                Map<Object, Object> message = OBJECT_MAPPER.readValue(new String(rawMessage.getData().toByteArray()), new TypeReference<>() {
+                });
+                if (message.containsKey(telltaleKey)) {
+                    return message;
+                }
+            } catch (Exception e) {
+                throw new RuntimeException(format("Could not extract message with key [%s]", telltaleKey));
             }
         }
         throw new AssertionFailedError(format("No message with key \"%s\"!", telltaleKey));
     }
 
     @SuppressWarnings("unchecked")
-    private void assertWrappedOriginalEvent(Map<Object, Object> message) {
+    private void assertWrappedOriginalEvent(Map<Object, Object> message, Context context, Type type) {
         Map<Object, Object> wrappedMessage = (Map<Object, Object>) message.get("originalEvent");
-        assertThat(wrappedMessage.get("analysisType")).isEqualTo(Type.TERTIARY.toString());
-        assertThat(wrappedMessage.get("analysisContext")).isEqualTo(Context.DIAGNOSTIC.toString());
+        assertThat(wrappedMessage.get("analysisType")).isEqualTo(type.toString());
+        assertThat(wrappedMessage.get("analysisContext")).isEqualTo(context.toString());
         assertThat(wrappedMessage.get("sample")).isEqualTo("samplet");
         assertThat(wrappedMessage.get("analysisMolecule")).isEqualTo("DNA");
         assertThat(wrappedMessage.get("version")).isEqualTo("version");
