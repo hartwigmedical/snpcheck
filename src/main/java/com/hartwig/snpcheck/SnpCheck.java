@@ -18,16 +18,17 @@ import com.hartwig.api.SampleApi;
 import com.hartwig.api.model.Ini;
 import com.hartwig.api.model.Run;
 import com.hartwig.api.model.RunFailure;
+import com.hartwig.api.model.RunFailure.TypeEnum;
 import com.hartwig.api.model.RunSet;
 import com.hartwig.api.model.Sample;
 import com.hartwig.api.model.SampleType;
 import com.hartwig.api.model.Status;
 import com.hartwig.api.model.UpdateRun;
 import com.hartwig.events.Analysis.Context;
-import com.hartwig.events.Analysis.Type;
 import com.hartwig.events.Handler;
 import com.hartwig.events.PipelineStaged;
 import com.hartwig.events.PipelineValidated;
+import com.hartwig.snpcheck.VcfComparison.Result;
 import com.hartwig.snpcheck.turquoise.SnpCheckEvent;
 
 import org.slf4j.Logger;
@@ -65,8 +66,13 @@ public class SnpCheck implements Handler<PipelineStaged> {
 
     public void handle(final PipelineStaged event) {
         try {
-            if (event.analysisType().equals(Type.TERTIARY) && !event.analysisContext().equals(Context.SHALLOW)) {
+            if (!event.analysisContext().equals(Context.SHALLOW)) {
                 Run run = runs.get(event.runId().orElseThrow());
+                if (run.getStatus().equals(Status.VALIDATED)) {
+                    LOGGER.info("Passing through [{} {}] event for already-snpchecked run [{}]",
+                            event.analysisContext(), event.analysisType(), run.getId());
+                    PipelineValidated.builder().originalEvent(event).build().publish(validatedTopicPublisher, objectMapper);
+                }
                 if (run.getIni().equals(Ini.SOMATIC_INI.getValue()) || run.getIni().equals(Ini.SINGLESAMPLE_INI.getValue())) {
                     LOGGER.info("Received a SnpCheck candidate [{}] for run [{}]", run.getSet().getName(), run.getId());
                     if (waitForFinished(run)) {
@@ -86,7 +92,9 @@ public class SnpCheck implements Handler<PipelineStaged> {
                                         .result(result.name().toLowerCase())
                                         .build()
                                         .publish();
-                                PipelineValidated.builder().originalEvent(event).build().publish(validatedTopicPublisher, objectMapper);
+                                if (result.equals(Result.PASS)) {
+                                    PipelineValidated.builder().originalEvent(event).build().publish(validatedTopicPublisher, objectMapper);
+                                }
                             } else {
                                 LOGGER.info("No validation VCF available for set [{}].", run.getSet().getName());
                                 labPendingBuffer.add(event);
@@ -118,7 +126,7 @@ public class SnpCheck implements Handler<PipelineStaged> {
             currentStatus = runs.get(run.getId()).getStatus();
             LOGGER.info("After 5s the status is [{}]", currentStatus);
         }
-        return currentStatus.equals(Status.FINISHED);
+        return currentStatus.equals(Status.FINISHED) || runFailedQc(run);
     }
 
     private void failed(final Run run, final RunFailure.TypeEnum failure) {
@@ -146,7 +154,9 @@ public class SnpCheck implements Handler<PipelineStaged> {
             VcfComparison.Result result = vcfComparison.compare(run, refVcf, valVcf);
             if (result.equals(VcfComparison.Result.PASS)) {
                 LOGGER.info("Set [{}] was successfully snpchecked.", run.getSet().getName());
-                runs.update(run.getId(), new UpdateRun().status(Status.VALIDATED));
+                if (!runFailedQc(run)) {
+                    runs.update(run.getId(), new UpdateRun().status(Status.VALIDATED));
+                }
             } else {
                 LOGGER.info("Set [{}] failed snpcheck.", run.getSet().getName());
                 failed(run, RunFailure.TypeEnum.QCFAILURE);
@@ -157,6 +167,10 @@ public class SnpCheck implements Handler<PipelineStaged> {
             failed(run, RunFailure.TypeEnum.TECHNICALFAILURE);
             return VcfComparison.Result.FAIL;
         }
+    }
+
+    private boolean runFailedQc(final Run run) {
+        return run.getStatus() == Status.FAILED && run.getFailure().getType() == TypeEnum.QCFAILURE;
     }
 
     private static Optional<Sample> onlyOne(final SampleApi api, RunSet set, SampleType type) {
