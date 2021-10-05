@@ -126,8 +126,7 @@ public class SnpCheck implements Handler<PipelineStaged> {
             currentStatus = runs.get(run.getId()).getStatus();
             LOGGER.info("After 5s the status is [{}]", currentStatus);
         }
-        return currentStatus.equals(Status.FINISHED) ||
-                (currentStatus.equals(Status.FAILED) && run.getFailure().getType() == TypeEnum.QCFAILURE);
+        return currentStatus.equals(Status.FINISHED) || runFailedQc(run);
     }
 
     private void failed(final Run run, final RunFailure.TypeEnum failure) {
@@ -155,7 +154,7 @@ public class SnpCheck implements Handler<PipelineStaged> {
             VcfComparison.Result result = vcfComparison.compare(run, refVcf, valVcf);
             if (result.equals(VcfComparison.Result.PASS)) {
                 LOGGER.info("Set [{}] was successfully snpchecked.", run.getSet().getName());
-                if (!(run.getStatus() == Status.FAILED && run.getFailure().getType() == TypeEnum.QCFAILURE)) {
+                if (!runFailedQc(run)) {
                     runs.update(run.getId(), new UpdateRun().status(Status.VALIDATED));
                 }
             } else {
@@ -168,6 +167,10 @@ public class SnpCheck implements Handler<PipelineStaged> {
             failed(run, RunFailure.TypeEnum.TECHNICALFAILURE);
             return VcfComparison.Result.FAIL;
         }
+    }
+
+    private boolean runFailedQc(final Run run) {
+        return run.getStatus() == Status.FAILED && run.getFailure().getType() == TypeEnum.QCFAILURE;
     }
 
     private static Optional<Sample> onlyOne(final SampleApi api, RunSet set, SampleType type) {
