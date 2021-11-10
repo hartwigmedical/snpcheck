@@ -8,6 +8,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 import com.hartwig.events.Analysis;
+import com.hartwig.events.Pipeline;
 import com.hartwig.events.PipelineStaged;
 
 import org.junit.Test;
@@ -19,12 +20,13 @@ public class LabPendingBufferTest {
         SnpCheck snpCheck = mock(SnpCheck.class);
         LabPendingBuffer victim = new LabPendingBuffer(snpCheck, Executors.newSingleThreadScheduledExecutor(), TimeUnit.MILLISECONDS, 1);
         PipelineStaged event = PipelineStaged.builder()
-                .sample("sample")
-                .analysisContext(Analysis.Context.DIAGNOSTIC)
-                .analysisMolecule(Analysis.Molecule.DNA)
-                .analysisType(Analysis.Type.TERTIARY)
-                .version("5.23")
-                .setId(1L)
+                .pipeline(Pipeline.builder()
+                        .context(Pipeline.Context.DIAGNOSTIC)
+                        .sample("sample")
+                        .addAnalyses(Analysis.builder().molecule(Analysis.Molecule.DNA).type(Analysis.Type.SOMATIC).build())
+                        .version("5.23")
+                        .setId(1L)
+                        .build())
                 .build();
         victim.add(event);
         Thread.sleep(500);

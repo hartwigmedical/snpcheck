@@ -25,9 +25,9 @@ public class LabPendingBuffer {
     }
 
     public void add(final PipelineStaged buffered) {
-        LOGGER.info("Scheduling sample [{}] to be reprocessed in 1 hour", buffered.sample());
+        LOGGER.info("Scheduling sample [{}] to be reprocessed in 1 hour", buffered.pipeline().sample());
         scheduler.schedule(() -> {
-            LOGGER.info("Reprocessing sample [{}] as lab VCF was not available on last attempt", buffered.sample());
+            LOGGER.info("Reprocessing sample [{}] as lab VCF was not available on last attempt", buffered.pipeline().sample());
             snpCheck.handle(buffered);
         }, delay, delayUnit);
     }

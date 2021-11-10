@@ -24,7 +24,7 @@ import com.hartwig.api.model.Sample;
 import com.hartwig.api.model.SampleType;
 import com.hartwig.api.model.Status;
 import com.hartwig.api.model.UpdateRun;
-import com.hartwig.events.Analysis.Context;
+import com.hartwig.events.Pipeline.Context;
 import com.hartwig.events.Handler;
 import com.hartwig.events.PipelineStaged;
 import com.hartwig.events.PipelineValidated;
@@ -66,13 +66,8 @@ public class SnpCheck implements Handler<PipelineStaged> {
 
     public void handle(final PipelineStaged event) {
         try {
-            if (!event.analysisContext().equals(Context.SHALLOW)) {
-                Run run = runs.get(event.runId().orElseThrow());
-                if (run.getStatus().equals(Status.VALIDATED)) {
-                    LOGGER.info("Passing through [{} {}] event for already-snpchecked run [{}]",
-                            event.analysisContext(), event.analysisType(), run.getId());
-                    PipelineValidated.builder().originalEvent(event).build().publish(validatedTopicPublisher, objectMapper);
-                }
+            if (!event.pipeline().context().equals(Context.SHALLOW)) {
+                Run run = runs.get(event.pipeline().runId());
                 if (run.getIni().equals(Ini.SOMATIC_INI.getValue()) || run.getIni().equals(Ini.SINGLESAMPLE_INI.getValue())) {
                     LOGGER.info("Received a SnpCheck candidate [{}] for run [{}]", run.getSet().getName(), run.getId());
                     if (waitForFinished(run)) {
@@ -93,7 +88,10 @@ public class SnpCheck implements Handler<PipelineStaged> {
                                         .build()
                                         .publish();
                                 if (result.equals(Result.PASS)) {
-                                    PipelineValidated.builder().originalEvent(event).build().publish(validatedTopicPublisher, objectMapper);
+                                    PipelineValidated.builder()
+                                            .pipeline(event.pipeline())
+                                            .build()
+                                            .publish(validatedTopicPublisher, objectMapper);
                                 }
                             } else {
                                 LOGGER.info("No validation VCF available for set [{}].", run.getSet().getName());
