@@ -24,9 +24,8 @@ import com.hartwig.api.model.Sample;
 import com.hartwig.api.model.SampleType;
 import com.hartwig.api.model.Status;
 import com.hartwig.api.model.UpdateRun;
-import com.hartwig.events.Analysis.Context;
 import com.hartwig.events.Handler;
-import com.hartwig.events.PipelineStaged;
+import com.hartwig.events.PipelineComplete;
 import com.hartwig.events.PipelineValidated;
 import com.hartwig.snpcheck.VcfComparison.Result;
 import com.hartwig.snpcheck.turquoise.SnpCheckEvent;
@@ -34,7 +33,7 @@ import com.hartwig.snpcheck.turquoise.SnpCheckEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class SnpCheck implements Handler<PipelineStaged> {
+public class SnpCheck implements Handler<PipelineComplete> {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(SnpCheck.class);
     public static final String SNPCHECK_VCFS = "snpcheckvcfs";
@@ -64,69 +63,50 @@ public class SnpCheck implements Handler<PipelineStaged> {
         this.labPendingBuffer = new LabPendingBuffer(this, Executors.newScheduledThreadPool(1), TimeUnit.HOURS, 1);
     }
 
-    public void handle(final PipelineStaged event) {
+    public void handle(final PipelineComplete event) {
         try {
-            if (!event.analysisContext().equals(Context.SHALLOW)) {
-                Run run = runs.get(event.runId().orElseThrow());
-                if (run.getStatus().equals(Status.VALIDATED)) {
-                    LOGGER.info("Passing through [{} {}] event for already-snpchecked run [{}]",
-                            event.analysisContext(), event.analysisType(), run.getId());
-                    PipelineValidated.builder().originalEvent(event).build().publish(validatedTopicPublisher, objectMapper);
-                }
-                if (run.getIni().equals(Ini.SOMATIC_INI.getValue()) || run.getIni().equals(Ini.SINGLESAMPLE_INI.getValue())) {
-                    LOGGER.info("Received a SnpCheck candidate [{}] for run [{}]", run.getSet().getName(), run.getId());
-                    if (waitForFinished(run)) {
-                        Iterable<Blob> valVcfs = Optional.ofNullable(snpcheckBucket.list(Storage.BlobListOption.prefix(SNPCHECK_VCFS)))
-                                .map(Page::iterateAll)
-                                .orElse(Collections.emptyList());
-                        Optional<Sample> maybeRefSample = onlyOne(samples, run.getSet(), SampleType.REF);
-                        Optional<Sample> maybeTumorSample = onlyOne(samples, run.getSet(), SampleType.TUMOR);
-                        if (maybeRefSample.isPresent()) {
-                            Sample refSample = maybeRefSample.get();
-                            Optional<Blob> maybeValVcf = findValidationVcf(valVcfs, refSample);
-                            if (maybeValVcf.isPresent()) {
-                                VcfComparison.Result result = doComparison(run, refSample, maybeValVcf.get());
-                                SnpCheckEvent.builder()
-                                        .publisher(turquoiseTopicPublisher)
-                                        .sample(maybeTumorSample.map(Sample::getName).orElse(refSample.getName()))
-                                        .result(result.name().toLowerCase())
+            Run run = runs.get(event.pipeline().runId());
+            if (run.getIni().equals(Ini.SOMATIC_INI.getValue()) || run.getIni().equals(Ini.SINGLESAMPLE_INI.getValue())) {
+                LOGGER.info("Received a SnpCheck candidate [{}] for run [{}]", run.getSet().getName(), run.getId());
+                if (run.getStatus() == Status.FINISHED || runFailedQc(run)) {
+                    Iterable<Blob> valVcfs = Optional.ofNullable(snpcheckBucket.list(Storage.BlobListOption.prefix(SNPCHECK_VCFS)))
+                            .map(Page::iterateAll)
+                            .orElse(Collections.emptyList());
+                    Optional<Sample> maybeRefSample = onlyOne(samples, run.getSet(), SampleType.REF);
+                    Optional<Sample> maybeTumorSample = onlyOne(samples, run.getSet(), SampleType.TUMOR);
+                    if (maybeRefSample.isPresent()) {
+                        Sample refSample = maybeRefSample.get();
+                        Optional<Blob> maybeValVcf = findValidationVcf(valVcfs, refSample);
+                        if (maybeValVcf.isPresent()) {
+                            VcfComparison.Result result = doComparison(run, refSample, maybeValVcf.get());
+                            SnpCheckEvent.builder()
+                                    .publisher(turquoiseTopicPublisher)
+                                    .sample(maybeTumorSample.map(Sample::getName).orElse(refSample.getName()))
+                                    .result(result.name().toLowerCase())
+                                    .build()
+                                    .publish();
+                            if (result.equals(Result.PASS)) {
+                                PipelineValidated.builder()
+                                        .pipeline(event.pipeline())
                                         .build()
-                                        .publish();
-                                if (result.equals(Result.PASS)) {
-                                    PipelineValidated.builder().originalEvent(event).build().publish(validatedTopicPublisher, objectMapper);
-                                }
-                            } else {
-                                LOGGER.info("No validation VCF available for set [{}].", run.getSet().getName());
-                                labPendingBuffer.add(event);
+                                        .publish(validatedTopicPublisher, objectMapper);
                             }
                         } else {
-                            LOGGER.warn("Set [{}] had no ref sample available in the API. Unable to locate validation VCF.",
-                                    run.getSet().getName());
-                            failed(run, RunFailure.TypeEnum.TECHNICALFAILURE);
+                            LOGGER.info("No validation VCF available for set [{}].", run.getSet().getName());
+                            labPendingBuffer.add(event);
                         }
                     } else {
-                        LOGGER.info("Skipping run with status [{}]", run.getStatus());
+                        LOGGER.warn("Set [{}] had no ref sample available in the API. Unable to locate validation VCF.",
+                                run.getSet().getName());
+                        failed(run, RunFailure.TypeEnum.TECHNICALFAILURE);
                     }
+                } else {
+                    LOGGER.info("Skipping run with status [{}]", run.getStatus());
                 }
             }
         } catch (Exception e) {
             LOGGER.error("SnpCheck failed", e);
         }
-    }
-
-    private boolean waitForFinished(final Run run) {
-        Status currentStatus = run.getStatus();
-        if (currentStatus.equals(Status.PROCESSING)) {
-            LOGGER.info("Status of run was still processing. Waiting 5s and checking again.");
-            try {
-                Thread.sleep(5000);
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
-            }
-            currentStatus = runs.get(run.getId()).getStatus();
-            LOGGER.info("After 5s the status is [{}]", currentStatus);
-        }
-        return currentStatus.equals(Status.FINISHED) || runFailedQc(run);
     }
 
     private void failed(final Run run, final RunFailure.TypeEnum failure) {
@@ -170,7 +150,7 @@ public class SnpCheck implements Handler<PipelineStaged> {
     }
 
     private boolean runFailedQc(final Run run) {
-        return run.getStatus() == Status.FAILED && run.getFailure().getType() == TypeEnum.QCFAILURE;
+        return run.getStatus() == Status.FAILED && (run.getFailure() != null && run.getFailure().getType() == TypeEnum.QCFAILURE);
     }
 
     private static Optional<Sample> onlyOne(final SampleApi api, RunSet set, SampleType type) {
