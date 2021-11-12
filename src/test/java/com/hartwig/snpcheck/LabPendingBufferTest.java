@@ -9,7 +9,7 @@ import java.util.concurrent.TimeUnit;
 
 import com.hartwig.events.Analysis;
 import com.hartwig.events.Pipeline;
-import com.hartwig.events.PipelineStaged;
+import com.hartwig.events.PipelineComplete;
 
 import org.junit.Test;
 
@@ -19,8 +19,10 @@ public class LabPendingBufferTest {
     public void schedulesAnotherRunAfterConfiguredDelay() throws Exception {
         SnpCheck snpCheck = mock(SnpCheck.class);
         LabPendingBuffer victim = new LabPendingBuffer(snpCheck, Executors.newSingleThreadScheduledExecutor(), TimeUnit.MILLISECONDS, 1);
-        PipelineStaged event = PipelineStaged.builder()
+        PipelineComplete event = PipelineComplete.builder()
                 .pipeline(Pipeline.builder()
+                        .bucket("bucket")
+                        .runId(1L)
                         .context(Pipeline.Context.DIAGNOSTIC)
                         .sample("sample")
                         .addAnalyses(Analysis.builder().molecule(Analysis.Molecule.DNA).type(Analysis.Type.SOMATIC).build())

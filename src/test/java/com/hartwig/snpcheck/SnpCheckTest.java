@@ -42,14 +42,11 @@ import com.hartwig.events.Analysis;
 import com.hartwig.events.Analysis.Molecule;
 import com.hartwig.events.Analysis.Type;
 import com.hartwig.events.AnalysisOutputBlob;
-import com.hartwig.events.ImmutablePipelineStaged;
 import com.hartwig.events.Pipeline;
 import com.hartwig.events.Pipeline.Context;
-import com.hartwig.events.PipelineStaged;
+import com.hartwig.events.PipelineComplete;
 import com.hartwig.events.PipelineValidated;
-import com.hartwig.pipeline.turquoise.Subject;
 import com.hartwig.snpcheck.VcfComparison.Result;
-import com.hartwig.snpcheck.turquoise.SnpCheckEvent;
 
 import org.junit.Before;
 import org.junit.Test;
@@ -120,11 +117,6 @@ public class SnpCheckTest {
                 .set(new RunSet().name("set").refSample("ref").id(SET_ID))
                 .ini(somaticIni.getValue())
                 .status(Status.FINISHED);
-    }
-
-    @Test
-    public void filtersShallowPipelines() {
-        handleAndVerifyNoApiOrEventUpdates(stagedEvent(Context.SHALLOW));
     }
 
     @Test
@@ -253,7 +245,7 @@ public class SnpCheckTest {
 
     @SuppressWarnings("unchecked")
     @Test
-    public void publishesTurquoiseEventOnCompletion() throws Exception {
+    public void publishesTurquoiseEventOnCompletion() {
         fullSnpcheckWithResult(VcfComparison.Result.PASS, BARCODE);
         victim.handle(stagedEvent(Context.DIAGNOSTIC));
         ArgumentCaptor<PubsubMessage> pubsubMessageArgumentCaptor = ArgumentCaptor.forClass(PubsubMessage.class);
@@ -297,7 +289,7 @@ public class SnpCheckTest {
         assertThat(analysis.output().get(0).barcode()).hasValue("bc");
     }
 
-    private void setupSnpcheckPassAndVerifyApiAndEventUpdates(PipelineStaged event) {
+    private void setupSnpcheckPassAndVerifyApiAndEventUpdates(PipelineComplete event) {
         when(sampleApi.list(null, null, null, SET_ID, SampleType.REF, null)).thenReturn(singletonList(REF_SAMPLE));
         when(sampleApi.list(null, null, null, SET_ID, SampleType.TUMOR, null)).thenReturn(singletonList(TUMOR_SAMPLE));
         setupValidationVcfs(Result.PASS, run, BARCODE);
@@ -306,7 +298,7 @@ public class SnpCheckTest {
         verify(runApi).update(eq(RUN_ID), any(UpdateRun.class));
     }
 
-    private void setupSnpcheckFailAndVerifyApiUpdateButNoEvents(PipelineStaged event) {
+    private void setupSnpcheckFailAndVerifyApiUpdateButNoEvents(PipelineComplete event) {
         when(sampleApi.list(null, null, null, SET_ID, SampleType.REF, null)).thenReturn(singletonList(REF_SAMPLE));
         when(sampleApi.list(null, null, null, SET_ID, SampleType.TUMOR, null)).thenReturn(singletonList(TUMOR_SAMPLE));
         setupValidationVcfs(Result.FAIL, run, BARCODE);
@@ -315,11 +307,11 @@ public class SnpCheckTest {
         verify(runApi).update(eq(RUN_ID), any(UpdateRun.class));
     }
 
-    private void setupHealthcheckPassAndVerifyNoApiUpdateButEvent(PipelineStaged event) {
+    private void setupHealthcheckPassAndVerifyNoApiUpdateButEvent(PipelineComplete event) {
         setupHealthcheckAndVerifyNoApiUpdateButEvent(event);
     }
 
-    private void setupHealthcheckAndVerifyNoApiUpdateButEvent(PipelineStaged event) {
+    private void setupHealthcheckAndVerifyNoApiUpdateButEvent(PipelineComplete event) {
         run = run.status(Status.FAILED).failure(new RunFailure().type(TypeEnum.QCFAILURE));
         when(sampleApi.list(null, null, null, SET_ID, SampleType.REF, null)).thenReturn(singletonList(REF_SAMPLE));
         when(sampleApi.list(null, null, null, SET_ID, SampleType.TUMOR, null)).thenReturn(singletonList(TUMOR_SAMPLE));
@@ -331,7 +323,7 @@ public class SnpCheckTest {
         assertWrappedOriginalEvent(readEvent(pubsubMessageArgumentCaptor, PipelineValidated.class), Context.DIAGNOSTIC, Type.SOMATIC);
     }
 
-    private void handleAndVerifyNoApiOrEventUpdates(PipelineStaged event) {
+    private void handleAndVerifyNoApiOrEventUpdates(PipelineComplete event) {
         victim.handle(event);
         verify(runApi, never()).update(any(), any());
         verify(vcfComparison, never()).compare(any(), any(), any());
@@ -374,8 +366,8 @@ public class SnpCheckTest {
         when(vcfComparison.compare(run, referenceVcf, validationVcf)).thenReturn(result);
     }
 
-    private ImmutablePipelineStaged stagedEvent(final Pipeline.Context context) {
-        return PipelineStaged.builder()
+    private PipelineComplete stagedEvent(final Pipeline.Context context) {
+        return PipelineComplete.builder()
                 .pipeline(Pipeline.builder()
                         .bucket("bucket")
                         .sample(TUMOR_SAMPLE.getName())

@@ -14,7 +14,7 @@ import com.google.cloud.storage.StorageOptions;
 import com.google.pubsub.v1.ProjectTopicName;
 import com.hartwig.api.HmfApi;
 import com.hartwig.events.EventSubscriber;
-import com.hartwig.events.PipelineStaged;
+import com.hartwig.events.PipelineComplete;
 import com.hartwig.events.PipelineValidated;
 
 import org.slf4j.Logger;
@@ -69,8 +69,8 @@ public class SnpCheckMain implements Callable<Integer> {
             }
             EventSubscriber.create(project,
                     snpCheckCredentials,
-                    PipelineStaged.subscription(project, "snpcheck", snpCheckCredentials),
-                    PipelineStaged.class)
+                    PipelineComplete.subscription(project, "snpcheck", snpCheckCredentials),
+                    PipelineComplete.class)
                     .subscribe(new SnpCheck(hmfApi.runs(),
                             hmfApi.samples(),
                             snpcheckBucket,
