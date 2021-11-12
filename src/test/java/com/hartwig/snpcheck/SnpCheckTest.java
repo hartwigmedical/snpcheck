@@ -79,6 +79,7 @@ public class SnpCheckTest {
         OBJECT_MAPPER.registerModule(new Jdk8Module());
     }
 
+    @SuppressWarnings("unchecked")
     @Before
     public void setUp() {
         run = run(Ini.SOMATIC_INI);
@@ -89,7 +90,6 @@ public class SnpCheckTest {
         vcfComparison = mock(VcfComparison.class);
         turquoiseTopicPublisher = mock(Publisher.class);
         validatedTopicPublisher = mock(Publisher.class);
-        //noinspection unchecked
         when(turquoiseTopicPublisher.publish(any())).thenReturn(mock(ApiFuture.class));
         when(validatedTopicPublisher.publish(any())).thenReturn(mock(ApiFuture.class));
         when(runApi.get(RUN_ID)).thenReturn(run);
@@ -168,14 +168,6 @@ public class SnpCheckTest {
         when(sampleApi.list(null, null, null, SET_ID, SampleType.REF, null)).thenReturn(emptyList());
         victim.handle(stagedEvent(Context.DIAGNOSTIC));
         assertTechnicalFailure();
-    }
-
-    @Test
-    public void waitsForProcessingRunsForFiveSeconds() {
-        when(runApi.get(run.getId())).thenReturn(run(Ini.SOMATIC_INI).status(Status.PROCESSING))
-                .thenReturn(run(Ini.SOMATIC_INI).status(Status.FINISHED));
-        victim.handle(stagedEvent(Context.DIAGNOSTIC));
-        verify(runApi, times(1)).update(any(), any());
     }
 
     @Test

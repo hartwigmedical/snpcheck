@@ -68,7 +68,7 @@ public class SnpCheck implements Handler<PipelineComplete> {
             Run run = runs.get(event.pipeline().runId());
             if (run.getIni().equals(Ini.SOMATIC_INI.getValue()) || run.getIni().equals(Ini.SINGLESAMPLE_INI.getValue())) {
                 LOGGER.info("Received a SnpCheck candidate [{}] for run [{}]", run.getSet().getName(), run.getId());
-                if (waitForFinished(run)) {
+                if (run.getStatus() == Status.FINISHED || runFailedQc(run)) {
                     Iterable<Blob> valVcfs = Optional.ofNullable(snpcheckBucket.list(Storage.BlobListOption.prefix(SNPCHECK_VCFS)))
                             .map(Page::iterateAll)
                             .orElse(Collections.emptyList());
@@ -107,21 +107,6 @@ public class SnpCheck implements Handler<PipelineComplete> {
         } catch (Exception e) {
             LOGGER.error("SnpCheck failed", e);
         }
-    }
-
-    private boolean waitForFinished(final Run run) {
-        Status currentStatus = run.getStatus();
-        if (currentStatus.equals(Status.PROCESSING)) {
-            LOGGER.info("Status of run was still processing. Waiting 5s and checking again.");
-            try {
-                Thread.sleep(5000);
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
-            }
-            currentStatus = runs.get(run.getId()).getStatus();
-            LOGGER.info("After 5s the status is [{}]", currentStatus);
-        }
-        return currentStatus.equals(Status.FINISHED) || runFailedQc(run);
     }
 
     private void failed(final Run run, final RunFailure.TypeEnum failure) {
@@ -165,7 +150,7 @@ public class SnpCheck implements Handler<PipelineComplete> {
     }
 
     private boolean runFailedQc(final Run run) {
-        return run.getStatus() == Status.FAILED && run.getFailure().getType() == TypeEnum.QCFAILURE;
+        return run.getStatus() == Status.FAILED && (run.getFailure() != null && run.getFailure().getType() == TypeEnum.QCFAILURE);
     }
 
     private static Optional<Sample> onlyOne(final SampleApi api, RunSet set, SampleType type) {
