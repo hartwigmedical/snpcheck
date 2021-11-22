@@ -104,6 +104,7 @@ public class SnpCheck implements Handler<PipelineComplete> {
                     }
                 }
             } else {
+                LOGGER.info("Passing through verification event for sample [{}]", event.pipeline().sample());
                 publishValidated(event);
             }
         } catch (Exception e) {
