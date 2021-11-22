@@ -259,6 +259,15 @@ public class SnpCheckTest {
         assertWrappedOriginalEvent(validated, Context.DIAGNOSTIC, Type.SOMATIC);
     }
 
+    @Test
+    public void passesThroughVerificationEvents() {
+        victim.handle(stagedEvent(Context.VERIFICATION));
+        ArgumentCaptor<PubsubMessage> pubsubMessageArgumentCaptor = ArgumentCaptor.forClass(PubsubMessage.class);
+        verify(validatedTopicPublisher, times(1)).publish(pubsubMessageArgumentCaptor.capture());
+        PipelineValidated validated = readEvent(pubsubMessageArgumentCaptor, PipelineValidated.class);
+        assertWrappedOriginalEvent(validated, Context.VERIFICATION, Type.SOMATIC);
+    }
+
     private <T> T readEvent(final ArgumentCaptor<PubsubMessage> pubsubMessageArgumentCaptor, final Class<T> valueType) {
         try {
             return OBJECT_MAPPER.readValue(new String(pubsubMessageArgumentCaptor.getValue().getData().toByteArray()), valueType);
