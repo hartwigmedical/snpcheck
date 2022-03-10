@@ -260,12 +260,13 @@ public class SnpCheckTest {
     }
 
     @Test
-    public void passesThroughVerificationEvents() {
-        victim.handle(stagedEvent(Context.VERIFICATION));
+    public void passesThroughRerunIni() {
+        when(runApi.get(run.getId())).thenReturn(run.ini(Ini.RERUN_INI.getValue()));
+        victim.handle(stagedEvent(Context.RESEARCH));
         ArgumentCaptor<PubsubMessage> pubsubMessageArgumentCaptor = ArgumentCaptor.forClass(PubsubMessage.class);
         verify(validatedTopicPublisher, times(1)).publish(pubsubMessageArgumentCaptor.capture());
         PipelineValidated validated = readEvent(pubsubMessageArgumentCaptor, PipelineValidated.class);
-        assertWrappedOriginalEvent(validated, Context.VERIFICATION, Type.SOMATIC);
+        assertWrappedOriginalEvent(validated, Context.RESEARCH, Type.SOMATIC);
     }
 
     private <T> T readEvent(final ArgumentCaptor<PubsubMessage> pubsubMessageArgumentCaptor, final Class<T> valueType) {
