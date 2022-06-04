@@ -106,7 +106,7 @@ public class SnpCheck implements Handler<PipelineComplete> {
                 publishValidated(event);
             }
         } catch (Exception e) {
-            LOGGER.error("SnpCheck failed", e);
+            throw new RuntimeException("Failed to process SnpCheck");
         }
     }
 
