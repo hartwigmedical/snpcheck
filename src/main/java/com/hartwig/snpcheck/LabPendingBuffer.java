@@ -31,7 +31,7 @@ public class LabPendingBuffer {
                 LOGGER.info("Reprocessing sample [{}] as lab VCF was not available on last attempt", buffered.pipeline().sample());
                 snpCheck.handle(buffered);
             } catch (Exception e) {
-                LOGGER.warn("Failed to reprocess sample", e);
+                LOGGER.warn("Failed to reprocess sample [{}]; re-queueing", buffered.pipeline().sample(), e);
                 this.add(buffered);
             }
         }, delay, delayUnit);
