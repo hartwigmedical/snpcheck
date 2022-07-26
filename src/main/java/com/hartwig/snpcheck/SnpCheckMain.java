@@ -47,7 +47,7 @@ public class SnpCheckMain implements Callable<Integer> {
                         description = "Project in which the snpcheck is running")
     private String project;
     @CommandLine.Option(names = { "--passthru" },
-            required = true,
+            defaultValue = "false",
             description = "Mark all events as validated without actually validating against the snpcheck vcf.")
     private boolean passthru;
 

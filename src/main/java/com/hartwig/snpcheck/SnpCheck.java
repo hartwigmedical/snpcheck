@@ -69,7 +69,7 @@ public class SnpCheck implements Handler<PipelineComplete> {
         try {
             Run run = runs.get(event.pipeline().runId());
             if (passthru) {
-                LOGGER.info("Passing through rerun event for sample [{}]", event.pipeline().sample());
+                LOGGER.info("Passing through event for sample [{}]", event.pipeline().sample());
                 publishValidated(event);
             } else if (run.getIni().equals(Ini.SOMATIC_INI.getValue()) || run.getIni().equals(Ini.SINGLESAMPLE_INI.getValue())) {
                 LOGGER.info("Received a SnpCheck candidate [{}] for run [{}]", run.getSet().getName(), run.getId());
