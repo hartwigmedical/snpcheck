@@ -108,7 +108,7 @@ public class SnpCheckTest {
                 vcfComparison,
                 turquoiseTopicPublisher,
                 validatedTopicPublisher,
-                OBJECT_MAPPER);
+                OBJECT_MAPPER, false);
     }
 
     private Run run(final Ini somaticIni) {
@@ -260,7 +260,15 @@ public class SnpCheckTest {
     }
 
     @Test
-    public void passesThroughRerunIni() {
+    public void passesThruWhenFlagSet() {
+        victim = new SnpCheck(runApi,
+                sampleApi,
+                snpcheckBucket,
+                pipelineStorage,
+                vcfComparison,
+                turquoiseTopicPublisher,
+                validatedTopicPublisher,
+                OBJECT_MAPPER, true);
         when(runApi.get(run.getId())).thenReturn(run.ini(Ini.RERUN_INI.getValue()));
         victim.handle(stagedEvent(Context.RESEARCH));
         ArgumentCaptor<PubsubMessage> pubsubMessageArgumentCaptor = ArgumentCaptor.forClass(PubsubMessage.class);
