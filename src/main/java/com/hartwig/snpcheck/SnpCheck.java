@@ -25,7 +25,6 @@ import com.hartwig.api.model.SampleType;
 import com.hartwig.api.model.Status;
 import com.hartwig.api.model.UpdateRun;
 import com.hartwig.events.Handler;
-import com.hartwig.events.Pipeline;
 import com.hartwig.events.PipelineComplete;
 import com.hartwig.events.PipelineValidated;
 import com.hartwig.snpcheck.VcfComparison.Result;
@@ -49,10 +48,11 @@ public class SnpCheck implements Handler<PipelineComplete> {
     private final Publisher validatedTopicPublisher;
     private final ObjectMapper objectMapper;
     private final LabPendingBuffer labPendingBuffer;
+    private final boolean passthru;
 
     public SnpCheck(final RunApi runs, final SampleApi samples, final Bucket snpcheckBucket, final Storage pipelineStorage,
-            final VcfComparison vcfComparison, final Publisher publisher, final Publisher validatedTopicPublisher,
-            final ObjectMapper objectMapper) {
+                    final VcfComparison vcfComparison, final Publisher publisher, final Publisher validatedTopicPublisher,
+                    final ObjectMapper objectMapper, final boolean passthru) {
         this.runs = runs;
         this.samples = samples;
         this.snpcheckBucket = snpcheckBucket;
@@ -61,13 +61,17 @@ public class SnpCheck implements Handler<PipelineComplete> {
         this.turquoiseTopicPublisher = publisher;
         this.validatedTopicPublisher = validatedTopicPublisher;
         this.objectMapper = objectMapper;
+        this.passthru = passthru;
         this.labPendingBuffer = new LabPendingBuffer(this, Executors.newScheduledThreadPool(1), TimeUnit.HOURS, 1);
     }
 
     public void handle(final PipelineComplete event) {
         try {
             Run run = runs.get(event.pipeline().runId());
-            if (run.getIni().equals(Ini.SOMATIC_INI.getValue()) || run.getIni().equals(Ini.SINGLESAMPLE_INI.getValue())) {
+            if (passthru) {
+                LOGGER.info("Passing through event for sample [{}]", event.pipeline().sample());
+                publishValidated(event);
+            } else if (run.getIni().equals(Ini.SOMATIC_INI.getValue()) || run.getIni().equals(Ini.SINGLESAMPLE_INI.getValue())) {
                 LOGGER.info("Received a SnpCheck candidate [{}] for run [{}]", run.getSet().getName(), run.getId());
                 if (run.getStatus() == Status.FINISHED || runFailedQc(run)) {
                     Iterable<Blob> valVcfs = Optional.ofNullable(snpcheckBucket.list(Storage.BlobListOption.prefix(SNPCHECK_VCFS)))
@@ -101,9 +105,6 @@ public class SnpCheck implements Handler<PipelineComplete> {
                 } else {
                     LOGGER.info("Skipping run with status [{}]", run.getStatus());
                 }
-            } else if (run.getIni().equals(Ini.RERUN_INI.getValue())) {
-                LOGGER.info("Passing through rerun event for sample [{}]", event.pipeline().sample());
-                publishValidated(event);
             }
         } catch (Exception e) {
             throw new RuntimeException("Failed to process SnpCheck");

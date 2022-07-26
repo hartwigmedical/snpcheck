@@ -46,6 +46,10 @@ public class SnpCheckMain implements Callable<Integer> {
                         required = true,
                         description = "Project in which the snpcheck is running")
     private String project;
+    @CommandLine.Option(names = { "--passthru" },
+            defaultValue = "false",
+            description = "Mark all events as validated without actually validating against the snpcheck vcf.")
+    private boolean passthru;
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
@@ -83,7 +87,7 @@ public class SnpCheckMain implements Callable<Integer> {
                             Publisher.newBuilder(ProjectTopicName.of(project, PipelineValidated.TOPIC))
                                     .setCredentialsProvider(() -> snpCheckCredentials)
                                     .build(),
-                            OBJECT_MAPPER));
+                            OBJECT_MAPPER, passthru));
             return 0;
         } catch (Exception e) {
             LOGGER.error("Exception while running snpcheck", e);
