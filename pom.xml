@@ -24,7 +24,7 @@
         <google-cloud-bom.version>0.145.0</google-cloud-bom.version>
         <java-client.version>1.1.26</java-client.version>
         <pipeline5.version>5.18.1943</pipeline5.version>
-        <pipeline-events.version>2.0.2</pipeline-events.version>
+        <pipeline-events.version>local-SNAPSHOT</pipeline-events.version>
     </properties>
 
     <repositories>
