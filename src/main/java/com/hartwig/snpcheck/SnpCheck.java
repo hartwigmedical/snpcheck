@@ -107,7 +107,7 @@ public class SnpCheck implements Handler<PipelineComplete> {
                 }
             }
         } catch (Exception e) {
-            throw new RuntimeException("Failed to process SnpCheck");
+            throw new RuntimeException("Failed to process SnpCheck", e);
         }
     }
 
