@@ -62,6 +62,11 @@ public class SnpCheckMain implements Callable<Integer> {
                 return 1;
             }
 
+            if (passthru && project.contains("prod")){
+                LOGGER.error("Snpcheck does not allow configuring passthru on a production project.");
+                return 1;
+            }
+
             EventSubscriber.create(project,
                     PipelineComplete.subscription(project, "snpcheck"),
                     PipelineComplete.class)
