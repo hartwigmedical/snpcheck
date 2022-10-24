@@ -1,20 +1,5 @@
 package com.hartwig.snpcheck;
 
-import static java.util.Collections.emptyList;
-import static java.util.Collections.singletonList;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.eq;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-
-import java.util.List;
-import java.util.Map;
-
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -29,28 +14,26 @@ import com.google.cloud.storage.Storage;
 import com.google.pubsub.v1.PubsubMessage;
 import com.hartwig.api.RunApi;
 import com.hartwig.api.SampleApi;
-import com.hartwig.api.model.Ini;
-import com.hartwig.api.model.Run;
-import com.hartwig.api.model.RunFailure;
+import com.hartwig.api.model.*;
 import com.hartwig.api.model.RunFailure.TypeEnum;
-import com.hartwig.api.model.RunSet;
-import com.hartwig.api.model.Sample;
-import com.hartwig.api.model.SampleType;
-import com.hartwig.api.model.Status;
-import com.hartwig.api.model.UpdateRun;
-import com.hartwig.events.Analysis;
+import com.hartwig.events.*;
 import com.hartwig.events.Analysis.Molecule;
 import com.hartwig.events.Analysis.Type;
-import com.hartwig.events.AnalysisOutputBlob;
-import com.hartwig.events.Pipeline;
 import com.hartwig.events.Pipeline.Context;
-import com.hartwig.events.PipelineComplete;
-import com.hartwig.events.PipelineValidated;
 import com.hartwig.snpcheck.VcfComparison.Result;
-
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
+
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+
+import static java.util.Collections.emptyList;
+import static java.util.Collections.singletonList;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
 
 public class SnpCheckTest {
 
@@ -122,11 +105,6 @@ public class SnpCheckTest {
     @Test
     public void processesDiagnosticPipelines() {
         setupSnpcheckPassAndVerifyApiAndEventUpdates(stagedEvent(Context.DIAGNOSTIC));
-    }
-
-    @Test
-    public void processesResearchPipelines() {
-        setupSnpcheckPassAndVerifyApiAndEventUpdates(stagedEvent(Context.RESEARCH));
     }
 
     @Test
@@ -256,7 +234,36 @@ public class SnpCheckTest {
         ArgumentCaptor<PubsubMessage> pubsubMessageArgumentCaptor = ArgumentCaptor.forClass(PubsubMessage.class);
         verify(validatedTopicPublisher, times(1)).publish(pubsubMessageArgumentCaptor.capture());
         PipelineValidated validated = readEvent(pubsubMessageArgumentCaptor, PipelineValidated.class);
-        assertWrappedOriginalEvent(validated, Context.DIAGNOSTIC, Type.SOMATIC);
+        assertWrappedOriginalEvent(validated, Context.DIAGNOSTIC);
+    }
+
+    @Test
+    public void passesThroughResearchRunsWithDiagnosticSnpcheck() {
+        when(runApi.get(run.getId())).thenReturn(run);
+        when(runApi.list(null, Ini.SOMATIC_INI, SET_ID, null, null, null, null, "DIAGNOSTIC"))
+                .thenReturn(List.of(new Run().status(Status.VALIDATED)));
+        victim.handle(stagedEvent(Context.RESEARCH));
+        ArgumentCaptor<PubsubMessage> pubsubMessageArgumentCaptor = ArgumentCaptor.forClass(PubsubMessage.class);
+        verify(validatedTopicPublisher, times(1)).publish(pubsubMessageArgumentCaptor.capture());
+        PipelineValidated validated = readEvent(pubsubMessageArgumentCaptor, PipelineValidated.class);
+        assertWrappedOriginalEvent(validated, Context.RESEARCH);
+    }
+
+    @Test(expected = IllegalStateException.class)
+    public void illegalStateOnResearchRunsWithoutDiagnosticRun() {
+        when(runApi.get(run.getId())).thenReturn(run);
+        when(runApi.list(null, Ini.SOMATIC_INI, SET_ID, null, null, null, null, "DIAGNOSTIC"))
+                .thenReturn(Collections.emptyList());
+        victim.handle(stagedEvent(Context.RESEARCH));
+    }
+
+    @Test
+    public void errorOnResearchRunsWithNoDiagnosticRunSnpcheck() {
+        when(runApi.get(run.getId())).thenReturn(run);
+        when(runApi.list(null, Ini.SOMATIC_INI, SET_ID, null, null, null, null, "DIAGNOSTIC"))
+                .thenReturn(List.of(new Run().failure(new RunFailure().type(TypeEnum.QCFAILURE).source("SnpCheck"))));
+        victim.handle(stagedEvent(Context.RESEARCH));
+        verify(validatedTopicPublisher, never()).publish(any());
     }
 
     @Test
@@ -274,7 +281,7 @@ public class SnpCheckTest {
         ArgumentCaptor<PubsubMessage> pubsubMessageArgumentCaptor = ArgumentCaptor.forClass(PubsubMessage.class);
         verify(validatedTopicPublisher, times(1)).publish(pubsubMessageArgumentCaptor.capture());
         PipelineValidated validated = readEvent(pubsubMessageArgumentCaptor, PipelineValidated.class);
-        assertWrappedOriginalEvent(validated, Context.RESEARCH, Type.SOMATIC);
+        assertWrappedOriginalEvent(validated, Context.RESEARCH);
     }
 
     private <T> T readEvent(final ArgumentCaptor<PubsubMessage> pubsubMessageArgumentCaptor, final Class<T> valueType) {
@@ -285,7 +292,7 @@ public class SnpCheckTest {
         }
     }
 
-    private void assertWrappedOriginalEvent(PipelineValidated event, Context context, Type type) {
+    private void assertWrappedOriginalEvent(PipelineValidated event, Context context) {
         Pipeline pipeline = event.pipeline();
         Analysis analysis = pipeline.analyses().get(0);
         assertThat(pipeline.context()).isEqualTo(context);
@@ -293,7 +300,7 @@ public class SnpCheckTest {
         assertThat(pipeline.version()).isEqualTo("version");
         assertThat(pipeline.runId()).isEqualTo(1);
         assertThat(pipeline.setId()).isEqualTo(2);
-        assertThat(analysis.type()).isEqualTo(type);
+        assertThat(analysis.type()).isEqualTo(Type.SOMATIC);
         assertThat(analysis.molecule()).isEqualTo(Molecule.DNA);
         assertThat(analysis.output().get(0).filesize()).isEqualTo(11);
         assertThat(analysis.output().get(0).barcode()).hasValue("bc");
@@ -330,7 +337,7 @@ public class SnpCheckTest {
         verify(runApi, never()).update(any(), any());
         ArgumentCaptor<PubsubMessage> pubsubMessageArgumentCaptor = ArgumentCaptor.forClass(PubsubMessage.class);
         verify(validatedTopicPublisher, times(1)).publish(pubsubMessageArgumentCaptor.capture());
-        assertWrappedOriginalEvent(readEvent(pubsubMessageArgumentCaptor, PipelineValidated.class), Context.DIAGNOSTIC, Type.SOMATIC);
+        assertWrappedOriginalEvent(readEvent(pubsubMessageArgumentCaptor, PipelineValidated.class), Context.DIAGNOSTIC);
     }
 
     private void handleAndVerifyNoApiOrEventUpdates(PipelineComplete event) {
