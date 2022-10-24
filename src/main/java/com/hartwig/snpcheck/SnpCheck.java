@@ -1,5 +1,12 @@
 package com.hartwig.snpcheck;
 
+import java.util.Collections;
+import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.StreamSupport;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.api.gax.paging.Page;
 import com.google.cloud.pubsub.v1.Publisher;
@@ -8,24 +15,23 @@ import com.google.cloud.storage.Bucket;
 import com.google.cloud.storage.Storage;
 import com.hartwig.api.RunApi;
 import com.hartwig.api.SampleApi;
-import com.hartwig.api.model.*;
+import com.hartwig.api.model.Ini;
+import com.hartwig.api.model.Run;
+import com.hartwig.api.model.RunFailure;
 import com.hartwig.api.model.RunFailure.TypeEnum;
+import com.hartwig.api.model.RunSet;
+import com.hartwig.api.model.Sample;
+import com.hartwig.api.model.SampleType;
+import com.hartwig.api.model.Status;
+import com.hartwig.api.model.UpdateRun;
 import com.hartwig.events.Handler;
-import com.hartwig.events.Pipeline;
 import com.hartwig.events.PipelineComplete;
 import com.hartwig.events.PipelineValidated;
 import com.hartwig.snpcheck.VcfComparison.Result;
 import com.hartwig.snpcheck.turquoise.SnpCheckEvent;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.List;
-import java.util.Optional;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
-import java.util.stream.StreamSupport;
 
 public class SnpCheck implements Handler<PipelineComplete> {
 
@@ -60,69 +66,49 @@ public class SnpCheck implements Handler<PipelineComplete> {
     }
 
     public void handle(final PipelineComplete event) {
-        Run run = runs.get(event.pipeline().runId());
-        if (passthru) {
-            LOGGER.info("Passing through event for sample [{}]", event.pipeline().sample());
-            publishValidated(event);
-        } else if (run.getIni().equals(Ini.SOMATIC_INI.getValue()) || run.getIni().equals(Ini.SINGLESAMPLE_INI.getValue())) {
-            LOGGER.info("Received a SnpCheck candidate [{}] for run [{}]", run.getSet().getName(), run.getId());
-            if (event.pipeline().context().equals(Pipeline.Context.RESEARCH)) {
-                passthroughResearchWhenDiagnosticValidated(event, run);
-            } else {
-                validateRunWithSnpcheck(event, run);
-            }
-        }
-    }
-
-    private void validateRunWithSnpcheck(final PipelineComplete event, final Run run) {
-        if (run.getStatus() == Status.FINISHED || runFailedQc(run)) {
-            Iterable<Blob> valVcfs = Optional.ofNullable(snpcheckBucket.list(Storage.BlobListOption.prefix(SNPCHECK_VCFS)))
-                    .map(Page::iterateAll)
-                    .orElse(Collections.emptyList());
-            Optional<Sample> maybeRefSample = onlyOne(samples, run.getSet(), SampleType.REF);
-            Optional<Sample> maybeTumorSample = onlyOne(samples, run.getSet(), SampleType.TUMOR);
-            if (maybeRefSample.isPresent()) {
-                Sample refSample = maybeRefSample.get();
-                Optional<Blob> maybeValVcf = findValidationVcf(valVcfs, refSample);
-                if (maybeValVcf.isPresent()) {
-                    Result result = doComparison(run, refSample, maybeValVcf.get());
-                    SnpCheckEvent.builder()
-                            .publisher(turquoiseTopicPublisher)
-                            .sample(maybeTumorSample.map(Sample::getName).orElse(refSample.getName()))
-                            .result(result.name().toLowerCase())
-                            .build()
-                            .publish();
-                    if (result.equals(Result.PASS)) {
-                        publishValidated(event);
+        try {
+            Run run = runs.get(event.pipeline().runId());
+            if (passthru) {
+                LOGGER.info("Passing through event for sample [{}]", event.pipeline().sample());
+                publishValidated(event);
+            } else if (run.getIni().equals(Ini.SOMATIC_INI.getValue()) || run.getIni().equals(Ini.SINGLESAMPLE_INI.getValue())) {
+                LOGGER.info("Received a SnpCheck candidate [{}] for run [{}]", run.getSet().getName(), run.getId());
+                if (run.getStatus() == Status.FINISHED || runFailedQc(run)) {
+                    Iterable<Blob> valVcfs = Optional.ofNullable(snpcheckBucket.list(Storage.BlobListOption.prefix(SNPCHECK_VCFS)))
+                            .map(Page::iterateAll)
+                            .orElse(Collections.emptyList());
+                    Optional<Sample> maybeRefSample = onlyOne(samples, run.getSet(), SampleType.REF);
+                    Optional<Sample> maybeTumorSample = onlyOne(samples, run.getSet(), SampleType.TUMOR);
+                    if (maybeRefSample.isPresent()) {
+                        Sample refSample = maybeRefSample.get();
+                        Optional<Blob> maybeValVcf = findValidationVcf(valVcfs, refSample);
+                        if (maybeValVcf.isPresent()) {
+                            VcfComparison.Result result = doComparison(run, refSample, maybeValVcf.get());
+                            SnpCheckEvent.builder()
+                                    .publisher(turquoiseTopicPublisher)
+                                    .sample(maybeTumorSample.map(Sample::getName).orElse(refSample.getName()))
+                                    .result(result.name().toLowerCase())
+                                    .build()
+                                    .publish();
+                            if (result.equals(Result.PASS)) {
+                                publishValidated(event);
+                            }
+                        } else {
+                            LOGGER.info("No validation VCF available for set [{}].", run.getSet().getName());
+                            labPendingBuffer.add(event);
+                        }
+                    } else {
+                        LOGGER.warn("Set [{}] had no ref sample available in the API. Unable to locate validation VCF.",
+                                run.getSet().getName());
+                        failed(run, RunFailure.TypeEnum.TECHNICALFAILURE);
                     }
                 } else {
-                    LOGGER.info("No validation VCF available for set [{}].", run.getSet().getName());
-                    labPendingBuffer.add(event);
+                    LOGGER.info("Skipping run with status [{}]", run.getStatus());
                 }
-            } else {
-                LOGGER.warn("Set [{}] had no ref sample available in the API. Unable to locate validation VCF.",
-                        run.getSet().getName());
-                failed(run, TypeEnum.TECHNICALFAILURE);
             }
-        } else {
-            LOGGER.info("Skipping run with status [{}]", run.getStatus());
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to process SnpCheck", e);
         }
-    }
-
-    private void passthroughResearchWhenDiagnosticValidated(final PipelineComplete event, final Run run) {
-        @SuppressWarnings("ConstantConditions") Run mostRecentDiagnostic = runs.list(null, Ini.SOMATIC_INI, run.getSet().getId(), null, null, null, null, "DIAGNOSTIC")
-                .stream().max(Comparator.comparing(Run::getEndTime))
-                .orElseThrow(() -> new IllegalStateException(String.format("Research run [%s] for set [%s] had no diagnostic run. Cannot validate.", run.getId(), run.getSet().getName())));
-        if (diagnosticHasFailedSnpcheck(mostRecentDiagnostic)) {
-            LOGGER.warn("Diagnostic run [{}] for research run [{}], for set [{}] has failed snpcheck. Cannot validate.", mostRecentDiagnostic.getId(), run.getId(), run.getSet().getName());
-        } else {
-            LOGGER.info("Passing through research run [{}], set [{}]", run.getId(), run.getSet().getName());
-            publishValidated(event);
-        }
-    }
-
-    private static boolean diagnosticHasFailedSnpcheck(final Run mostRecentDiagnostic) {
-        return mostRecentDiagnostic.getFailure() != null && mostRecentDiagnostic.getFailure().getSource().equals("SnpCheck");
     }
 
     private void publishValidated(PipelineComplete event) {
