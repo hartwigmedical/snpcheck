@@ -67,7 +67,7 @@ public class SnpCheck implements Handler<PipelineComplete> {
         } else if (run.getIni().equals(Ini.SOMATIC_INI.getValue()) || run.getIni().equals(Ini.SINGLESAMPLE_INI.getValue())) {
             LOGGER.info("Received a SnpCheck candidate [{}] for run [{}]", run.getSet().getName(), run.getId());
             if (event.pipeline().context().equals(Pipeline.Context.RESEARCH)) {
-                passthroughResearchWhenDiagnosticValidated(event, run);
+                validateResearchWhenSourceRunValidated(event, run);
             } else {
                 validateRunWithSnpcheck(event, run);
             }
@@ -109,11 +109,13 @@ public class SnpCheck implements Handler<PipelineComplete> {
         }
     }
 
-    private void passthroughResearchWhenDiagnosticValidated(final PipelineComplete event, final Run run) {
-        @SuppressWarnings("ConstantConditions") Run mostRecentDiagnostic = runs.list(null, Ini.SOMATIC_INI, run.getSet().getId(), null, null, null, null, "DIAGNOSTIC")
-                .stream().max(Comparator.comparing(Run::getEndTime))
+    private void validateResearchWhenSourceRunValidated(final PipelineComplete event, final Run run) {
+        @SuppressWarnings("ConstantConditions") Run mostRecentDiagnostic = runs.list(null, Ini.SOMATIC_INI, run.getSet().getId(), null, null, null, null, null)
+                .stream()
+                .filter(r -> !r.getContext().equals("RESEARCH"))
+                .max(Comparator.comparing(Run::getEndTime))
                 .orElseThrow(() -> new IllegalStateException(String.format("Research run [%s] for set [%s] had no diagnostic run. Cannot validate.", run.getId(), run.getSet().getName())));
-        if (diagnosticHasFailedSnpcheck(mostRecentDiagnostic)) {
+        if (sourceRunHasFailedSnpcheck(mostRecentDiagnostic)) {
             LOGGER.warn("Diagnostic run [{}] for research run [{}], for set [{}] has failed snpcheck. Cannot validate.", mostRecentDiagnostic.getId(), run.getId(), run.getSet().getName());
         } else {
             LOGGER.info("Passing through research run [{}], set [{}]", run.getId(), run.getSet().getName());
@@ -121,8 +123,8 @@ public class SnpCheck implements Handler<PipelineComplete> {
         }
     }
 
-    private static boolean diagnosticHasFailedSnpcheck(final Run mostRecentDiagnostic) {
-        return mostRecentDiagnostic.getFailure() != null && mostRecentDiagnostic.getFailure().getSource().equals("SnpCheck");
+    private static boolean sourceRunHasFailedSnpcheck(final Run source) {
+        return source.getFailure() != null && source.getFailure().getSource().equals("SnpCheck");
     }
 
     private void publishValidated(PipelineComplete event) {

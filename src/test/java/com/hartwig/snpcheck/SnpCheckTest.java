@@ -238,10 +238,22 @@ public class SnpCheckTest {
     }
 
     @Test
-    public void passesThroughResearchRunsWithDiagnosticSnpcheck() {
+    public void validatesResearchRunsWithDiagnosticSnpcheck() {
         when(runApi.get(run.getId())).thenReturn(run);
-        when(runApi.list(null, Ini.SOMATIC_INI, SET_ID, null, null, null, null, "DIAGNOSTIC"))
-                .thenReturn(List.of(new Run().status(Status.VALIDATED)));
+        when(runApi.list(null, Ini.SOMATIC_INI, SET_ID, null, null, null, null, null))
+                .thenReturn(List.of(new Run().status(Status.VALIDATED).context("RESEARCH"), new Run().status(Status.VALIDATED).context("DIAGNOSTIC")));
+        victim.handle(stagedEvent(Context.RESEARCH));
+        ArgumentCaptor<PubsubMessage> pubsubMessageArgumentCaptor = ArgumentCaptor.forClass(PubsubMessage.class);
+        verify(validatedTopicPublisher, times(1)).publish(pubsubMessageArgumentCaptor.capture());
+        PipelineValidated validated = readEvent(pubsubMessageArgumentCaptor, PipelineValidated.class);
+        assertWrappedOriginalEvent(validated, Context.RESEARCH);
+    }
+
+    @Test
+    public void validatesResearchRunsWithServicesSnpcheck() {
+        when(runApi.get(run.getId())).thenReturn(run);
+        when(runApi.list(null, Ini.SOMATIC_INI, SET_ID, null, null, null, null, null))
+                .thenReturn(List.of(new Run().status(Status.VALIDATED).context("RESEARCH"), new Run().status(Status.VALIDATED).context("SERVICES")));
         victim.handle(stagedEvent(Context.RESEARCH));
         ArgumentCaptor<PubsubMessage> pubsubMessageArgumentCaptor = ArgumentCaptor.forClass(PubsubMessage.class);
         verify(validatedTopicPublisher, times(1)).publish(pubsubMessageArgumentCaptor.capture());
@@ -252,7 +264,7 @@ public class SnpCheckTest {
     @Test(expected = IllegalStateException.class)
     public void illegalStateOnResearchRunsWithoutDiagnosticRun() {
         when(runApi.get(run.getId())).thenReturn(run);
-        when(runApi.list(null, Ini.SOMATIC_INI, SET_ID, null, null, null, null, "DIAGNOSTIC"))
+        when(runApi.list(null, Ini.SOMATIC_INI, SET_ID, null, null, null, null, null))
                 .thenReturn(Collections.emptyList());
         victim.handle(stagedEvent(Context.RESEARCH));
     }
@@ -260,8 +272,9 @@ public class SnpCheckTest {
     @Test
     public void errorOnResearchRunsWithNoDiagnosticRunSnpcheck() {
         when(runApi.get(run.getId())).thenReturn(run);
-        when(runApi.list(null, Ini.SOMATIC_INI, SET_ID, null, null, null, null, "DIAGNOSTIC"))
-                .thenReturn(List.of(new Run().failure(new RunFailure().type(TypeEnum.QCFAILURE).source("SnpCheck"))));
+        when(runApi.list(null, Ini.SOMATIC_INI, SET_ID, null, null, null, null, null))
+                .thenReturn(List.of(new Run().status(Status.VALIDATED).context("RESEARCH"),
+                        new Run().context("DIAGNOSTIC").failure(new RunFailure().type(TypeEnum.QCFAILURE).source("SnpCheck"))));
         victim.handle(stagedEvent(Context.RESEARCH));
         verify(validatedTopicPublisher, never()).publish(any());
     }
