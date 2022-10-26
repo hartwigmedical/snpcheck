@@ -35,8 +35,8 @@ public class SnpCheck implements Handler<PipelineComplete> {
 
     private final RunApi runs;
     private final SampleApi samples;
-    private final Bucket snpcheckBucket;
     private final Storage pipelineStorage;
+    private final String bucketName;
     private final VcfComparison vcfComparison;
     private final Publisher turquoiseTopicPublisher;
     private final Publisher validatedTopicPublisher;
@@ -44,13 +44,13 @@ public class SnpCheck implements Handler<PipelineComplete> {
     private final LabPendingBuffer labPendingBuffer;
     private final boolean passthru;
 
-    public SnpCheck(final RunApi runs, final SampleApi samples, final Bucket snpcheckBucket, final Storage pipelineStorage,
+    public SnpCheck(final RunApi runs, final SampleApi samples, final Storage pipelineStorage, final String bucketName,
                     final VcfComparison vcfComparison, final Publisher publisher, final Publisher validatedTopicPublisher,
                     final ObjectMapper objectMapper, final boolean passthru) {
         this.runs = runs;
         this.samples = samples;
-        this.snpcheckBucket = snpcheckBucket;
         this.pipelineStorage = pipelineStorage;
+        this.bucketName = bucketName;
         this.vcfComparison = vcfComparison;
         this.turquoiseTopicPublisher = publisher;
         this.validatedTopicPublisher = validatedTopicPublisher;
@@ -76,7 +76,7 @@ public class SnpCheck implements Handler<PipelineComplete> {
 
     private void validateRunWithSnpcheck(final PipelineComplete event, final Run run) {
         if (run.getStatus() == Status.FINISHED || runFailedQc(run)) {
-            Iterable<Blob> valVcfs = Optional.ofNullable(snpcheckBucket.list(Storage.BlobListOption.prefix(SNPCHECK_VCFS)))
+            Iterable<Blob> valVcfs = Optional.ofNullable(pipelineStorage.list(bucketName, Storage.BlobListOption.prefix(SNPCHECK_VCFS)))
                     .map(Page::iterateAll)
                     .orElse(Collections.emptyList());
             Optional<Sample> maybeRefSample = onlyOne(samples, run.getSet(), SampleType.REF);

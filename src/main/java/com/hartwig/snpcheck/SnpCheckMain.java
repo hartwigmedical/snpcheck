@@ -56,12 +56,6 @@ public class SnpCheckMain implements Callable<Integer> {
     public Integer call() {
         try {
             HmfApi hmfApi = HmfApi.create(apiUrl);
-            Bucket snpcheckBucket = StorageOptions.getDefaultInstance().getService().get(snpcheckBucketName);
-            if (snpcheckBucket == null) {
-                LOGGER.error("Bucket [{}] does not exist. ", snpcheckBucketName);
-                return 1;
-            }
-
             if (passthru && project.contains("prod")){
                 LOGGER.error("Snpcheck does not allow configuring passthru on a production project.");
                 return 1;
@@ -72,8 +66,8 @@ public class SnpCheckMain implements Callable<Integer> {
                     PipelineComplete.class)
                     .subscribe(new SnpCheck(hmfApi.runs(),
                             hmfApi.samples(),
-                            snpcheckBucket,
                             StorageOptions.getDefaultInstance().getService(),
+                            snpcheckBucketName,
                             new PerlVcfComparison(),
                             Publisher.newBuilder(ProjectTopicName.of(project, "turquoise.events")).build(),
                             Publisher.newBuilder(ProjectTopicName.of(project, PipelineValidated.TOPIC)).build(),

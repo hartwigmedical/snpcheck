@@ -47,7 +47,7 @@ public class SnpCheckTest {
     private RunApi runApi;
     private SampleApi sampleApi;
     private Storage pipelineStorage;
-    private Bucket snpcheckBucket;
+    private String snpcheckBucket;
     private VcfComparison vcfComparison;
     private Publisher turquoiseTopicPublisher;
     private Publisher validatedTopicPublisher;
@@ -69,7 +69,7 @@ public class SnpCheckTest {
         runApi = mock(RunApi.class);
         sampleApi = mock(SampleApi.class);
         pipelineStorage = mock(Storage.class);
-        snpcheckBucket = mock(Bucket.class);
+        snpcheckBucket = "bucket";
         vcfComparison = mock(VcfComparison.class);
         turquoiseTopicPublisher = mock(Publisher.class);
         validatedTopicPublisher = mock(Publisher.class);
@@ -86,8 +86,8 @@ public class SnpCheckTest {
                 .build();
         victim = new SnpCheck(runApi,
                 sampleApi,
-                snpcheckBucket,
                 pipelineStorage,
+                snpcheckBucket,
                 vcfComparison,
                 turquoiseTopicPublisher,
                 validatedTopicPublisher,
@@ -164,7 +164,7 @@ public class SnpCheckTest {
         Blob validationVcf = mock(Blob.class);
         when(validationVcf.getName()).thenReturn(BARCODE + ".vcf");
         when(page.iterateAll()).thenReturn(singletonList(validationVcf));
-        when(snpcheckBucket.list(Storage.BlobListOption.prefix(SnpCheck.SNPCHECK_VCFS))).thenReturn(page);
+        when(pipelineStorage.list(snpcheckBucket, Storage.BlobListOption.prefix(SnpCheck.SNPCHECK_VCFS))).thenReturn(page);
         victim.handle(stagedEvent(Context.DIAGNOSTIC));
         assertTechnicalFailure();
     }
@@ -283,8 +283,8 @@ public class SnpCheckTest {
     public void passesThruWhenFlagSet() {
         victim = new SnpCheck(runApi,
                 sampleApi,
-                snpcheckBucket,
                 pipelineStorage,
+                snpcheckBucket,
                 vcfComparison,
                 turquoiseTopicPublisher,
                 validatedTopicPublisher,
@@ -388,7 +388,7 @@ public class SnpCheckTest {
         Blob validationVcf = mock(Blob.class);
         when(validationVcf.getName()).thenReturn("/path/" + barcode + ".vcf");
         when(page.iterateAll()).thenReturn(singletonList(validationVcf));
-        when(snpcheckBucket.list(Storage.BlobListOption.prefix(SnpCheck.SNPCHECK_VCFS))).thenReturn(page);
+        when(pipelineStorage.list(snpcheckBucket, Storage.BlobListOption.prefix(SnpCheck.SNPCHECK_VCFS))).thenReturn(page);
         Bucket referenceBucket = mock(Bucket.class);
         when(pipelineStorage.get(this.run.getBucket())).thenReturn(referenceBucket);
         Blob referenceVcf = mock(Blob.class);
