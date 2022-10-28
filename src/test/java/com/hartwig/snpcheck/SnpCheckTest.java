@@ -247,6 +247,7 @@ public class SnpCheckTest {
         verify(validatedTopicPublisher, times(1)).publish(pubsubMessageArgumentCaptor.capture());
         PipelineValidated validated = readEvent(pubsubMessageArgumentCaptor, PipelineValidated.class);
         assertWrappedOriginalEvent(validated, Context.RESEARCH);
+        assertValidatedInApi();
     }
 
     @Test
@@ -259,6 +260,7 @@ public class SnpCheckTest {
         verify(validatedTopicPublisher, times(1)).publish(pubsubMessageArgumentCaptor.capture());
         PipelineValidated validated = readEvent(pubsubMessageArgumentCaptor, PipelineValidated.class);
         assertWrappedOriginalEvent(validated, Context.RESEARCH);
+        assertValidatedInApi();
     }
 
     @Test(expected = IllegalStateException.class)
@@ -295,6 +297,13 @@ public class SnpCheckTest {
         verify(validatedTopicPublisher, times(1)).publish(pubsubMessageArgumentCaptor.capture());
         PipelineValidated validated = readEvent(pubsubMessageArgumentCaptor, PipelineValidated.class);
         assertWrappedOriginalEvent(validated, Context.RESEARCH);
+        assertValidatedInApi();
+    }
+
+    private void assertValidatedInApi() {
+        ArgumentCaptor<UpdateRun> updateRunArgumentCaptor = ArgumentCaptor.forClass(UpdateRun.class);
+        verify(runApi).update(eq(RUN_ID), updateRunArgumentCaptor.capture());
+        assertThat(updateRunArgumentCaptor.getValue().getStatus()).isEqualTo(Status.VALIDATED);
     }
 
     private <T> T readEvent(final ArgumentCaptor<PubsubMessage> pubsubMessageArgumentCaptor, final Class<T> valueType) {
