@@ -43,10 +43,11 @@ public class SnpCheck implements Handler<PipelineComplete> {
     private final ObjectMapper objectMapper;
     private final LabPendingBuffer labPendingBuffer;
     private final boolean passthru;
+    private final boolean alwaysPass;
 
     public SnpCheck(final RunApi runs, final SampleApi samples, final Storage pipelineStorage, final String bucketName,
                     final VcfComparison vcfComparison, final Publisher publisher, final Publisher validatedTopicPublisher,
-                    final ObjectMapper objectMapper, final boolean passthru) {
+                    final ObjectMapper objectMapper, final boolean passthru, final boolean alwaysPass) {
         this.runs = runs;
         this.samples = samples;
         this.pipelineStorage = pipelineStorage;
@@ -56,6 +57,7 @@ public class SnpCheck implements Handler<PipelineComplete> {
         this.validatedTopicPublisher = validatedTopicPublisher;
         this.objectMapper = objectMapper;
         this.passthru = passthru;
+        this.alwaysPass = alwaysPass;
         this.labPendingBuffer = new LabPendingBuffer(this, Executors.newScheduledThreadPool(1), TimeUnit.HOURS, 1);
     }
 
@@ -153,7 +155,7 @@ public class SnpCheck implements Handler<PipelineComplete> {
             LOGGER.info("Found both a validation and reference VCF for set [{}]", run.getSet().getName());
             LOGGER.info("Validation [{}]", valVcf.getName());
             LOGGER.info("Reference [{}]", refVcf.getName());
-            VcfComparison.Result result = vcfComparison.compare(run, refVcf, valVcf);
+            VcfComparison.Result result = vcfComparison.compare(run, refVcf, valVcf, alwaysPass);
             if (result.equals(VcfComparison.Result.PASS)) {
                 LOGGER.info("Set [{}] was successfully snpchecked.", run.getSet().getName());
                 if (!runFailedQc(run)) {

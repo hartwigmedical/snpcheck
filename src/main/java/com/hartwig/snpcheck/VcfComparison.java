@@ -10,5 +10,5 @@ public interface VcfComparison {
         FAIL
     }
 
-    Result compare(final Run run, final Blob refVcf, final Blob valVcf);
+    Result compare(final Run run, final Blob refVcf, final Blob valVcf, final Boolean alwaysPass);
 }
