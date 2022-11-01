@@ -25,13 +25,8 @@ public class PerlVcfComparison implements VcfComparison {
             Files.deleteIfExists(refVcfLocal);
             Files.write(createFile(valVcfLocal), valVcf.getContent());
             Files.write(createFile(refVcfLocal), refVcf.getContent());
-            String baseCmd = alwaysPass ? "./snpcheck_compare_vcfs -alwaysPass": "./snpcheck_compare_vcfs";
-            Process perlScriptExecution =
-                    new ProcessBuilder().command(baseCmd, refVcfLocal.toString(), valVcfLocal.toString())
-                            .inheritIO()
-                            .start();
-            return perlScriptExecution.waitFor() == 0 ? Result.PASS : Result.FAIL;
-        } catch (IOException | InterruptedException e) {
+            return new PerlVcfComparisonExecution().execute(refVcfLocal.toString(), valVcfLocal.toString(), Boolean.FALSE);
+        } catch (IOException e) {
             throw new RuntimeException(e);
         }
     }
