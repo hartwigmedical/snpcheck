@@ -44,9 +44,9 @@ public class SnpCheckMain implements Callable<Integer> {
             description = "Mark all events as validated without actually validating against the snpcheck vcf.")
     private boolean passthru;
 
-    @CommandLine.Option(names = { "--allways_pass" },
+    @CommandLine.Option(names = { "--always_pass" },
                         defaultValue = "false",
-                        description = "Run the actual snpcheck in allways pass mode.")
+                        description = "Run the actual snpcheck in always pass mode.")
     private boolean alwaysPass;
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
