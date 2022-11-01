@@ -13,7 +13,7 @@ import com.hartwig.api.model.Run;
 public class PerlVcfComparison implements VcfComparison {
 
     @Override
-    public Result compare(final Run run, final Blob refVcf, final Blob valVcf) {
+    public Result compare(final Run run, final Blob refVcf, final Blob valVcf, final Boolean alwaysPass) {
         Path workingDirectory = Paths.get(run.getId() + "-working");
         try {
             if (!Files.exists(workingDirectory)) {
@@ -25,12 +25,8 @@ public class PerlVcfComparison implements VcfComparison {
             Files.deleteIfExists(refVcfLocal);
             Files.write(createFile(valVcfLocal), valVcf.getContent());
             Files.write(createFile(refVcfLocal), refVcf.getContent());
-            Process perlScriptExecution =
-                    new ProcessBuilder().command("./snpcheck_compare_vcfs", refVcfLocal.toString(), valVcfLocal.toString())
-                            .inheritIO()
-                            .start();
-            return perlScriptExecution.waitFor() == 0 ? Result.PASS : Result.FAIL;
-        } catch (IOException | InterruptedException e) {
+            return new PerlVcfComparisonExecution().execute(refVcfLocal.toString(), valVcfLocal.toString(), Boolean.FALSE);
+        } catch (IOException e) {
             throw new RuntimeException(e);
         }
     }

@@ -44,6 +44,11 @@ public class SnpCheckMain implements Callable<Integer> {
             description = "Mark all events as validated without actually validating against the snpcheck vcf.")
     private boolean passthru;
 
+    @CommandLine.Option(names = { "--allways_pass" },
+                        defaultValue = "false",
+                        description = "Run the actual snpcheck in allways pass mode.")
+    private boolean alwaysPass;
+
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     static {
@@ -71,7 +76,7 @@ public class SnpCheckMain implements Callable<Integer> {
                             new PerlVcfComparison(),
                             Publisher.newBuilder(ProjectTopicName.of(project, "turquoise.events")).build(),
                             Publisher.newBuilder(ProjectTopicName.of(project, PipelineValidated.TOPIC)).build(),
-                            OBJECT_MAPPER, passthru));
+                            OBJECT_MAPPER, passthru, alwaysPass));
             return 0;
         } catch (Exception e) {
             LOGGER.error("Exception while running snpcheck", e);
