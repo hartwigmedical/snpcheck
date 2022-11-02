@@ -25,7 +25,7 @@ public class PerlVcfComparison implements VcfComparison {
             Files.deleteIfExists(refVcfLocal);
             Files.write(createFile(valVcfLocal), valVcf.getContent());
             Files.write(createFile(refVcfLocal), refVcf.getContent());
-            return new PerlVcfComparisonExecution().execute(refVcfLocal.toString(), valVcfLocal.toString(), Boolean.FALSE);
+            return new PerlVcfComparisonExecution().execute(refVcfLocal.toString(), valVcfLocal.toString(), alwaysPass);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
