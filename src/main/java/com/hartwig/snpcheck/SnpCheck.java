@@ -4,7 +4,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.api.gax.paging.Page;
 import com.google.cloud.pubsub.v1.Publisher;
 import com.google.cloud.storage.Blob;
-import com.google.cloud.storage.Bucket;
 import com.google.cloud.storage.Storage;
 import com.hartwig.api.RunApi;
 import com.hartwig.api.SampleApi;
@@ -65,7 +64,7 @@ public class SnpCheck implements Handler<PipelineComplete> {
         Run run = runs.get(event.pipeline().runId());
         if (passthru) {
             LOGGER.info("Passing through event for sample [{}]", event.pipeline().sample());
-            publishValidated(event);
+            publishAndUpdateApiValidated(event, run);
         } else if (run.getIni().equals(Ini.SOMATIC_INI.getValue()) || run.getIni().equals(Ini.SINGLESAMPLE_INI.getValue())) {
             LOGGER.info("Received a SnpCheck candidate [{}] for run [{}]", run.getSet().getName(), run.getId());
             if (event.pipeline().context().equals(Pipeline.Context.RESEARCH)) {
@@ -104,7 +103,7 @@ public class SnpCheck implements Handler<PipelineComplete> {
             } else {
                 LOGGER.warn("Set [{}] had no ref sample available in the API. Unable to locate validation VCF.",
                         run.getSet().getName());
-                failed(run, TypeEnum.TECHNICALFAILURE);
+                apiFailed(run, TypeEnum.TECHNICALFAILURE);
             }
         } else {
             LOGGER.info("Skipping run with status [{}]", run.getStatus());
@@ -120,20 +119,25 @@ public class SnpCheck implements Handler<PipelineComplete> {
         if (sourceRunHasFailedSnpcheck(mostRecentDiagnostic)) {
             LOGGER.warn("Diagnostic run [{}] for research run [{}], for set [{}] has failed snpcheck. Cannot validate.", mostRecentDiagnostic.getId(), run.getId(), run.getSet().getName());
         } else {
-            LOGGER.info("Passing through research run [{}], set [{}]", run.getId(), run.getSet().getName());
-            publishValidated(event);
+            LOGGER.info("Validating research run [{}], set [{}] as the diagnostic run passed snpcheck", run.getId(), run.getSet().getName());
+            publishAndUpdateApiValidated(event, run);
         }
+    }
+
+    private void publishAndUpdateApiValidated(final PipelineComplete event, final Run run) {
+        publishValidated(event);
+        apiValidated(run);
     }
 
     private static boolean sourceRunHasFailedSnpcheck(final Run source) {
         return source.getFailure() != null && source.getFailure().getSource().equals("SnpCheck");
     }
 
-    private void publishValidated(PipelineComplete event) {
+    private void publishValidated(final PipelineComplete event) {
         PipelineValidated.builder().pipeline(event.pipeline()).build().publish(validatedTopicPublisher, objectMapper);
     }
 
-    private void failed(final Run run, final RunFailure.TypeEnum failure) {
+    private void apiFailed(final Run run, final RunFailure.TypeEnum failure) {
         runs.update(run.getId(), new UpdateRun().status(Status.FAILED).failure(new RunFailure().source(SNP_CHECK).type(failure)));
     }
 
@@ -159,18 +163,22 @@ public class SnpCheck implements Handler<PipelineComplete> {
             if (result.equals(VcfComparison.Result.PASS)) {
                 LOGGER.info("Set [{}] was successfully snpchecked.", run.getSet().getName());
                 if (!runFailedQc(run)) {
-                    runs.update(run.getId(), new UpdateRun().status(Status.VALIDATED));
+                    apiValidated(run);
                 }
             } else {
                 LOGGER.info("Set [{}] failed snpcheck.", run.getSet().getName());
-                failed(run, RunFailure.TypeEnum.QCFAILURE);
+                apiFailed(run, RunFailure.TypeEnum.QCFAILURE);
             }
             return result;
         } else {
             LOGGER.warn("Set [{}] had no VCF at [{}]", run.getSet().getName(), refVcfPath);
-            failed(run, RunFailure.TypeEnum.TECHNICALFAILURE);
+            apiFailed(run, RunFailure.TypeEnum.TECHNICALFAILURE);
             return VcfComparison.Result.FAIL;
         }
+    }
+
+    private void apiValidated(final Run run) {
+        runs.update(run.getId(), new UpdateRun().status(Status.VALIDATED));
     }
 
     private boolean runFailedQc(final Run run) {
