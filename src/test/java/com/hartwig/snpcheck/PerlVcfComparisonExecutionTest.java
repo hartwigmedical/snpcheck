@@ -1,8 +1,9 @@
 package com.hartwig.snpcheck;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import org.junit.Test;
 import com.hartwig.snpcheck.VcfComparison.Result;
+import org.junit.Test;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 public class PerlVcfComparisonExecutionTest {
     private static final String USER_DIR = System.getProperty("user.dir");
@@ -12,19 +13,19 @@ public class PerlVcfComparisonExecutionTest {
 
     @Test
     public void goodSnpcheckYieldsPass() {
-        Result result = new PerlVcfComparisonExecution().execute(GOOD_GENOTYPE_VCF_1, GOOD_GENOTYPE_VCF_2, Boolean.FALSE);
+        Result result = new PerlVcfComparisonExecution(false).execute(GOOD_GENOTYPE_VCF_1, GOOD_GENOTYPE_VCF_2);
         assertThat(result).isEqualTo(Result.PASS);
     }
 
     @Test
     public void badSnpcheckYieldsFail() {
-        Result result = new PerlVcfComparisonExecution().execute(GOOD_GENOTYPE_VCF_1, BAD_GENOTYPE_VCF, Boolean.FALSE);
+        Result result = new PerlVcfComparisonExecution(false).execute(GOOD_GENOTYPE_VCF_1, BAD_GENOTYPE_VCF);
         assertThat(result).isEqualTo(Result.FAIL);
     }
 
     @Test
     public void badSnpcheckAlwaysPassYieldsPass() {
-        Result result = new PerlVcfComparisonExecution().execute(GOOD_GENOTYPE_VCF_1, BAD_GENOTYPE_VCF, Boolean.TRUE);
+        Result result = new PerlVcfComparisonExecution(true).execute(GOOD_GENOTYPE_VCF_1, BAD_GENOTYPE_VCF);
         assertThat(result).isEqualTo(Result.PASS);
     }
 }

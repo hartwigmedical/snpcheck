@@ -91,7 +91,7 @@ public class SnpCheckTest {
                 vcfComparison,
                 turquoiseTopicPublisher,
                 validatedTopicPublisher,
-                OBJECT_MAPPER, false, false);
+                OBJECT_MAPPER, false);
     }
 
     private Run run(final Ini somaticIni) {
@@ -288,7 +288,7 @@ public class SnpCheckTest {
                 vcfComparison,
                 turquoiseTopicPublisher,
                 validatedTopicPublisher,
-                OBJECT_MAPPER, true, false);
+                OBJECT_MAPPER, true);
         when(runApi.get(run.getId())).thenReturn(run.ini(Ini.RERUN_INI.getValue()));
         victim.handle(stagedEvent(Context.RESEARCH));
         ArgumentCaptor<PubsubMessage> pubsubMessageArgumentCaptor = ArgumentCaptor.forClass(PubsubMessage.class);
@@ -324,7 +324,7 @@ public class SnpCheckTest {
         when(sampleApi.list(null, null, null, SET_ID, SampleType.TUMOR, null)).thenReturn(singletonList(TUMOR_SAMPLE));
         setupValidationVcfs(Result.PASS, run, BARCODE);
         victim.handle(event);
-        verify(vcfComparison).compare(any(), any(), any(), any());
+        verify(vcfComparison).compare(any(), any(), any());
         verify(runApi).update(eq(RUN_ID), any(UpdateRun.class));
     }
 
@@ -356,7 +356,7 @@ public class SnpCheckTest {
     private void handleAndVerifyNoApiOrEventUpdates(PipelineComplete event) {
         victim.handle(event);
         verify(runApi, never()).update(any(), any());
-        verify(vcfComparison, never()).compare(any(), any(), any(), any());
+        verify(vcfComparison, never()).compare(any(), any(), any());
     }
 
     @SuppressWarnings("unchecked")
@@ -393,7 +393,7 @@ public class SnpCheckTest {
         when(pipelineStorage.get(this.run.getBucket())).thenReturn(referenceBucket);
         Blob referenceVcf = mock(Blob.class);
         when(referenceBucket.get("set/sampler/snp_genotype/snp_genotype_output.vcf")).thenReturn(referenceVcf);
-        when(vcfComparison.compare(run, referenceVcf, validationVcf, Boolean.FALSE)).thenReturn(result);
+        when(vcfComparison.compare(run, referenceVcf, validationVcf)).thenReturn(result);
     }
 
     private PipelineComplete stagedEvent(final Pipeline.Context context) {
