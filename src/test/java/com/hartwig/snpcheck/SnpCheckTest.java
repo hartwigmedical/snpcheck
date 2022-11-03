@@ -402,7 +402,7 @@ public class SnpCheckTest {
         when(pipelineStorage.get(this.run.getBucket())).thenReturn(referenceBucket);
         Blob referenceVcf = mock(Blob.class);
         when(referenceBucket.get("set/sampler/snp_genotype/snp_genotype_output.vcf")).thenReturn(referenceVcf);
-        when(vcfComparison.compare(run, referenceVcf, validationVcf, Boolean.FALSE)).thenReturn(result);
+        when(vcfComparison.compare(run, referenceVcf, validationVcf, false)).thenReturn(result);
     }
 
     private PipelineComplete stagedEvent(final Pipeline.Context context) {
