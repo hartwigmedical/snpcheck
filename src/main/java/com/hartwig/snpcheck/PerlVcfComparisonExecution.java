@@ -7,7 +7,7 @@ public class PerlVcfComparisonExecution {
 
     private static final String COMPARE_SCRIPT = "./snpcheck_compare_vcfs";
 
-    public Result execute(final String refVcf, final String valVcf, final Boolean alwaysPass) {
+    public Result execute(final String refVcf, final String valVcf, final boolean alwaysPass) {
         try {
             ProcessBuilder processBuilder = new ProcessBuilder();
             if (alwaysPass){

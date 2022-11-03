@@ -46,7 +46,7 @@ public class SnpCheck implements Handler<PipelineComplete> {
 
     public SnpCheck(final RunApi runs, final SampleApi samples, final Storage pipelineStorage, final String bucketName,
                     final VcfComparison vcfComparison, final Publisher publisher, final Publisher validatedTopicPublisher,
-                    final ObjectMapper objectMapper, final boolean passthru, final boolean alwaysPass) {
+                    final ObjectMapper objectMapper, final boolean passthru, final Boolean alwaysPass) {
         this.runs = runs;
         this.samples = samples;
         this.pipelineStorage = pipelineStorage;

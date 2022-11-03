@@ -13,7 +13,7 @@ import com.hartwig.api.model.Run;
 public class PerlVcfComparison implements VcfComparison {
 
     @Override
-    public Result compare(final Run run, final Blob refVcf, final Blob valVcf, final boolean alwaysPass) {
+    public Result compare(final Run run, final Blob refVcf, final Blob valVcf, final Boolean alwaysPass) {
         Path workingDirectory = Paths.get(run.getId() + "-working");
         try {
             if (!Files.exists(workingDirectory)) {
