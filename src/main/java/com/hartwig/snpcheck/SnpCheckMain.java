@@ -65,6 +65,9 @@ public class SnpCheckMain implements Callable<Integer> {
                 LOGGER.error("Snpcheck does not allow configuring passthru on a production project.");
                 return 1;
             }
+            if (alwaysPass) {
+                LOGGER.info("Snpcheck configured to alwaysPass mode.");
+            }
 
             EventSubscriber.create(project,
                     PipelineComplete.subscription(project, "snpcheck"),
