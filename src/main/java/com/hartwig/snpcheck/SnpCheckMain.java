@@ -7,7 +7,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.google.cloud.pubsub.v1.Publisher;
-import com.google.cloud.storage.Bucket;
 import com.google.cloud.storage.StorageOptions;
 import com.google.pubsub.v1.ProjectTopicName;
 import com.hartwig.api.HmfApi;
@@ -46,7 +45,7 @@ public class SnpCheckMain implements Callable<Integer> {
 
     @CommandLine.Option(names = { "--always_pass" },
                         defaultValue = "false",
-                        description = "Run the actual snpcheck in always pass mode.")
+                        description = "Run the snpcheck script in always pass mode.")
     private boolean alwaysPass;
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
@@ -65,9 +64,7 @@ public class SnpCheckMain implements Callable<Integer> {
                 LOGGER.error("Snpcheck does not allow configuring passthru on a production project.");
                 return 1;
             }
-            if (alwaysPass) {
-                LOGGER.info("Snpcheck configured to alwaysPass mode.");
-            }
+            LOGGER.info("Snpcheck configured to alwaysPass={} mode.", alwaysPass);
 
             EventSubscriber.create(project,
                     PipelineComplete.subscription(project, "snpcheck"),

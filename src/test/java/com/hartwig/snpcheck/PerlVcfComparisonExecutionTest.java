@@ -12,19 +12,19 @@ public class PerlVcfComparisonExecutionTest {
 
     @Test
     public void goodSnpcheckYieldsPass() {
-        Result result = new PerlVcfComparisonExecution().execute(GOOD_GENOTYPE_VCF_1, GOOD_GENOTYPE_VCF_2, Boolean.FALSE);
+        Result result = new PerlVcfComparisonExecution().execute(GOOD_GENOTYPE_VCF_1, GOOD_GENOTYPE_VCF_2, false);
         assertThat(result).isEqualTo(Result.PASS);
     }
 
     @Test
     public void badSnpcheckYieldsFail() {
-        Result result = new PerlVcfComparisonExecution().execute(GOOD_GENOTYPE_VCF_1, BAD_GENOTYPE_VCF, Boolean.FALSE);
+        Result result = new PerlVcfComparisonExecution().execute(GOOD_GENOTYPE_VCF_1, BAD_GENOTYPE_VCF, false);
         assertThat(result).isEqualTo(Result.FAIL);
     }
 
     @Test
     public void badSnpcheckAlwaysPassYieldsPass() {
-        Result result = new PerlVcfComparisonExecution().execute(GOOD_GENOTYPE_VCF_1, BAD_GENOTYPE_VCF, Boolean.TRUE);
+        Result result = new PerlVcfComparisonExecution().execute(GOOD_GENOTYPE_VCF_1, BAD_GENOTYPE_VCF, true);
         assertThat(result).isEqualTo(Result.PASS);
     }
 }
