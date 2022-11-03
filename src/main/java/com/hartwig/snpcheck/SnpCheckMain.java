@@ -7,7 +7,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.google.cloud.pubsub.v1.Publisher;
-import com.google.cloud.storage.Bucket;
 import com.google.cloud.storage.StorageOptions;
 import com.google.pubsub.v1.ProjectTopicName;
 import com.hartwig.api.HmfApi;

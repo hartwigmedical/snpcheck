@@ -333,7 +333,7 @@ public class SnpCheckTest {
         when(sampleApi.list(null, null, null, SET_ID, SampleType.TUMOR, null)).thenReturn(singletonList(TUMOR_SAMPLE));
         setupValidationVcfs(Result.PASS, run, BARCODE);
         victim.handle(event);
-        verify(vcfComparison).compare(any(), any(), any(), any());
+        verify(vcfComparison).compare(any(), any(), any(), anyBoolean());
         verify(runApi).update(eq(RUN_ID), any(UpdateRun.class));
     }
 
@@ -365,7 +365,7 @@ public class SnpCheckTest {
     private void handleAndVerifyNoApiOrEventUpdates(PipelineComplete event) {
         victim.handle(event);
         verify(runApi, never()).update(any(), any());
-        verify(vcfComparison, never()).compare(any(), any(), any(), any());
+        verify(vcfComparison, never()).compare(any(), any(), any(), anyBoolean());
     }
 
     @SuppressWarnings("unchecked")
