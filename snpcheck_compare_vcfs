@@ -6,6 +6,7 @@ use warnings;
 use 5.16.0;
 use Getopt::Long;
 use File::Basename;
+use Array::Diff qw(:all);
 
 my $NA_CHAR = '-';
 my $SCRIPT = `basename $0`; chomp($SCRIPT);
