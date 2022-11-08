@@ -10,7 +10,7 @@ steps:
       - path: '/cache/.m2'
         name: 'm2_cache'
 
-  - name: 'eu.gcr.io/hmf-build/maven:3.6.0-jdk-11-slim-libarray-diff-perl'
+  - name: 'eu.gcr.io/hmf-build/maven:3.6.3-jdk-11-slim-libarray-diff-perl'
     entrypoint: 'mvn'
     args:
       - 'install'
