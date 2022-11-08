@@ -6,8 +6,8 @@ A post-pipeline validation which compares the results of the unifiedgenotyper ag
 This project requires perl modules not in standard "maven image". The following code was used to create the cloudbuild image.
 
 ```
-docker build . -t eu.gcr.io/hmf-build/maven:3.6.0-jdk-11-slim-libarray-diff-perl"
-docker push eu.gcr.io/hmf-build/maven:3.6.0-jdk-11-slim-libarray-diff-perl"
+docker build . -t "eu.gcr.io/hmf-build/maven:3.6.0-jdk-11-slim-libarray-diff-perl"
+docker push "eu.gcr.io/hmf-build/maven:3.6.0-jdk-11-slim-libarray-diff-perl"
 ```
 
 With the following Dockerfile contents:
