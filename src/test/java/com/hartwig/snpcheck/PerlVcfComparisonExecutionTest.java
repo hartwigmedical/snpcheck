@@ -2,7 +2,6 @@ package com.hartwig.snpcheck;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import org.junit.Ignore;
 import org.junit.Test;
 import com.hartwig.snpcheck.VcfComparison.Result;
 
@@ -13,21 +12,18 @@ public class PerlVcfComparisonExecutionTest {
     private static final String GOOD_GENOTYPE_VCF_2 = USER_DIR + "/src/test/resources/good2_genotype.vcf";
 
     @Test
-    @Ignore
     public void goodSnpcheckYieldsPass() {
         Result result = new PerlVcfComparisonExecution().execute(GOOD_GENOTYPE_VCF_1, GOOD_GENOTYPE_VCF_2, false);
         assertThat(result).isEqualTo(Result.PASS);
     }
 
     @Test
-    @Ignore
     public void badSnpcheckYieldsFail() {
         Result result = new PerlVcfComparisonExecution().execute(GOOD_GENOTYPE_VCF_1, BAD_GENOTYPE_VCF, false);
         assertThat(result).isEqualTo(Result.FAIL);
     }
 
     @Test
-    @Ignore
     public void badSnpcheckAlwaysPassYieldsPass() {
         Result result = new PerlVcfComparisonExecution().execute(GOOD_GENOTYPE_VCF_1, BAD_GENOTYPE_VCF, true);
         assertThat(result).isEqualTo(Result.PASS);
