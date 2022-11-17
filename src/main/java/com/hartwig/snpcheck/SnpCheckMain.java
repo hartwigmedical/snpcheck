@@ -40,12 +40,12 @@ public class SnpCheckMain implements Callable<Integer> {
 
     @CommandLine.Option(names = { "--passthru" },
             defaultValue = "false",
-            description = "Mark all events as validated without actually validating against the snpcheck vcf.")
+            description = "Mark all events as validated without invoking the Perl script (contrast with --always-pass).")
     private boolean passthru;
 
     @CommandLine.Option(names = { "--always_pass" },
                         defaultValue = "false",
-                        description = "Run the snpcheck script in always pass mode.")
+                        description = "Invoke the Perl script to check the lab VCF exists but assume the contents is correct (contrast with --passthru).")
     private boolean alwaysPass;
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
