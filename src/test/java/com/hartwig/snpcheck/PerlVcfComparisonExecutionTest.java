@@ -1,6 +1,7 @@
 package com.hartwig.snpcheck;
 
 import static org.assertj.core.api.Assertions.assertThat;
+
 import org.junit.Test;
 import com.hartwig.snpcheck.VcfComparison.Result;
 
