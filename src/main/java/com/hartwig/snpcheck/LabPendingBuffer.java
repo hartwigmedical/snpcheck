@@ -3,7 +3,7 @@ package com.hartwig.snpcheck;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
-import com.hartwig.events.PipelineComplete;
+import com.hartwig.events.pipeline.PipelineComplete;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

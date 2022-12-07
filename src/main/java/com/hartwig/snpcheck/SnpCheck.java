@@ -1,6 +1,5 @@
 package com.hartwig.snpcheck;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.api.gax.paging.Page;
 import com.google.cloud.pubsub.v1.Publisher;
 import com.google.cloud.storage.Blob;
@@ -9,10 +8,11 @@ import com.hartwig.api.RunApi;
 import com.hartwig.api.SampleApi;
 import com.hartwig.api.model.*;
 import com.hartwig.api.model.RunFailure.TypeEnum;
-import com.hartwig.events.Handler;
-import com.hartwig.events.Pipeline;
-import com.hartwig.events.PipelineComplete;
-import com.hartwig.events.PipelineValidated;
+import com.hartwig.events.pipeline.Pipeline;
+import com.hartwig.events.pipeline.PipelineComplete;
+import com.hartwig.events.pipeline.PipelineValidated;
+import com.hartwig.events.pubsub.EventPublisher;
+import com.hartwig.events.pubsub.Handler;
 import com.hartwig.snpcheck.VcfComparison.Result;
 import com.hartwig.snpcheck.turquoise.SnpCheckEvent;
 import org.slf4j.Logger;
@@ -38,23 +38,21 @@ public class SnpCheck implements Handler<PipelineComplete> {
     private final String bucketName;
     private final VcfComparison vcfComparison;
     private final Publisher turquoiseTopicPublisher;
-    private final Publisher validatedTopicPublisher;
-    private final ObjectMapper objectMapper;
+    private final EventPublisher<PipelineValidated> validatedEventPublisher;
     private final LabPendingBuffer labPendingBuffer;
     private final boolean passthru;
     private final boolean alwaysPass;
 
     public SnpCheck(final RunApi runs, final SampleApi samples, final Storage pipelineStorage, final String bucketName,
-                    final VcfComparison vcfComparison, final Publisher publisher, final Publisher validatedTopicPublisher,
-                    final ObjectMapper objectMapper, final boolean passthru, final boolean alwaysPass) {
+                    final VcfComparison vcfComparison, final Publisher publisher, final EventPublisher<PipelineValidated> validatedEventPublisher,
+                    final boolean passthru, final boolean alwaysPass) {
         this.runs = runs;
         this.samples = samples;
         this.pipelineStorage = pipelineStorage;
         this.bucketName = bucketName;
         this.vcfComparison = vcfComparison;
         this.turquoiseTopicPublisher = publisher;
-        this.validatedTopicPublisher = validatedTopicPublisher;
-        this.objectMapper = objectMapper;
+        this.validatedEventPublisher = validatedEventPublisher;
         this.passthru = passthru;
         this.alwaysPass = alwaysPass;
         this.labPendingBuffer = new LabPendingBuffer(this, Executors.newScheduledThreadPool(1), TimeUnit.HOURS, 1);
@@ -134,7 +132,7 @@ public class SnpCheck implements Handler<PipelineComplete> {
     }
 
     private void publishValidated(final PipelineComplete event) {
-        PipelineValidated.builder().pipeline(event.pipeline()).build().publish(validatedTopicPublisher, objectMapper);
+        validatedEventPublisher.publish(PipelineValidated.builder().pipeline(event.pipeline()).build());
     }
 
     private void apiFailed(final Run run, final RunFailure.TypeEnum failure) {
@@ -186,7 +184,7 @@ public class SnpCheck implements Handler<PipelineComplete> {
     }
 
     private static Optional<Sample> onlyOne(final SampleApi api, RunSet set, SampleType type) {
-        List<Sample> samples = api.list(null, null, null, set.getId(), type, null);
+        List<Sample> samples = api.list(null, null, null, set.getId(), type, null, null);
         if (samples.size() > 1) {
             throw new IllegalStateException(String.format("Multiple samples found for type [%s] and set [%s]", type, set.getName()));
         }
