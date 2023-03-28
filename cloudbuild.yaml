@@ -15,6 +15,8 @@ steps:
     args:
       - 'install'
       - '--batch-mode'
+      - '--activate-profiles'
+      - 'release'
     volumes:
       - path: '/cache/.m2'
         name: 'm2_cache'
