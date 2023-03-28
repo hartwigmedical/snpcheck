@@ -7,7 +7,7 @@
     <parent>
         <groupId>com.hartwig.cloud-sdk</groupId>
         <artifactId>cloud-sdk</artifactId>
-        <version>2.5.0</version>
+        <version>2.9.1</version>
         <relativePath/>
     </parent>
     <groupId>com.hartwig</groupId>
@@ -30,10 +30,10 @@
 
     <properties>
         <main.class>com.hartwig.snpcheck.SnpCheckMain</main.class>
+        <cloud-sdk.version>2.9.1</cloud-sdk.version>
     </properties>
 
     <dependencies>
-
         <dependency>
             <groupId>com.hartwig.api</groupId>
             <artifactId>java-client</artifactId>
@@ -50,6 +50,7 @@
         <dependency>
             <groupId>com.hartwig.cloud-sdk</groupId>
             <artifactId>cli</artifactId>
+            <version>${cloud-sdk.version}</version>
         </dependency>
 
         <dependency>
@@ -60,7 +61,5 @@
             <groupId>org.immutables</groupId>
             <artifactId>value</artifactId>
         </dependency>
-
     </dependencies>
-
 </project>
