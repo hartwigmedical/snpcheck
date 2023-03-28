@@ -4,9 +4,6 @@ import java.util.Collections;
 import java.util.List;
 
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
-import com.hartwig.pipeline.turquoise.Label;
-import com.hartwig.pipeline.turquoise.Subject;
-import com.hartwig.pipeline.turquoise.TurquoiseEvent;
 
 import org.immutables.value.Value;
 

@@ -16,10 +16,11 @@ import com.hartwig.api.RunApi;
 import com.hartwig.api.SampleApi;
 import com.hartwig.api.model.*;
 import com.hartwig.api.model.RunFailure.TypeEnum;
-import com.hartwig.events.*;
-import com.hartwig.events.Analysis.Molecule;
-import com.hartwig.events.Analysis.Type;
-import com.hartwig.events.Pipeline.Context;
+import com.hartwig.events.pipeline.*;
+import com.hartwig.events.pipeline.Analysis.Molecule;
+import com.hartwig.events.pipeline.Analysis.Type;
+import com.hartwig.events.pipeline.Pipeline.Context;
+import com.hartwig.events.pubsub.EventPublisher;
 import com.hartwig.snpcheck.VcfComparison.Result;
 import org.junit.Before;
 import org.junit.Test;
@@ -50,7 +51,7 @@ public class SnpCheckTest {
     private String snpcheckBucket;
     private VcfComparison vcfComparison;
     private Publisher turquoiseTopicPublisher;
-    private Publisher validatedTopicPublisher;
+    private EventPublisher<PipelineValidated> validatedTopicPublisher;
     private SnpCheck victim;
     private AnalysisOutputBlob outputBlob;
 
@@ -72,9 +73,8 @@ public class SnpCheckTest {
         snpcheckBucket = "bucket";
         vcfComparison = mock(VcfComparison.class);
         turquoiseTopicPublisher = mock(Publisher.class);
-        validatedTopicPublisher = mock(Publisher.class);
+        validatedTopicPublisher = mock(EventPublisher.class);
         when(turquoiseTopicPublisher.publish(any())).thenReturn(mock(ApiFuture.class));
-        when(validatedTopicPublisher.publish(any())).thenReturn(mock(ApiFuture.class));
         when(runApi.get(RUN_ID)).thenReturn(run);
         outputBlob = AnalysisOutputBlob.builder()
                 .barcode("bc")
@@ -91,7 +91,7 @@ public class SnpCheckTest {
                 vcfComparison,
                 turquoiseTopicPublisher,
                 validatedTopicPublisher,
-                OBJECT_MAPPER, false, false);
+                false, false);
     }
 
     private Run run(final Ini somaticIni) {
@@ -143,7 +143,7 @@ public class SnpCheckTest {
     @Test
     public void finishedSomaticRunNoRefSampleMarksRunTechnicalFail() {
         when(runApi.get(run.getId())).thenReturn(run);
-        when(sampleApi.list(null, null, null, SET_ID, SampleType.REF, null)).thenReturn(emptyList());
+        when(sampleApi.list(null, null, null, SET_ID, SampleType.REF, null, null)).thenReturn(emptyList());
         victim.handle(stagedEvent(Context.DIAGNOSTIC));
         assertTechnicalFailure();
     }
@@ -151,15 +151,15 @@ public class SnpCheckTest {
     @Test
     public void finishedSomaticRunNoValidationVcfDoesNothing() {
         when(runApi.get(run.getId())).thenReturn(run);
-        when(sampleApi.list(null, null, null, SET_ID, SampleType.REF, null)).thenReturn(singletonList(REF_SAMPLE));
-        when(sampleApi.list(null, null, null, SET_ID, SampleType.TUMOR, null)).thenReturn(singletonList(TUMOR_SAMPLE));
+        when(sampleApi.list(null, null, null, SET_ID, SampleType.REF, null, null)).thenReturn(singletonList(REF_SAMPLE));
+        when(sampleApi.list(null, null, null, SET_ID, SampleType.TUMOR, null, null)).thenReturn(singletonList(TUMOR_SAMPLE));
         handleAndVerifyNoApiOrEventUpdates(stagedEvent(Context.DIAGNOSTIC));
     }
 
     @Test
     public void finishedSomaticRunNoRefVcfMarksRunTechnicalFail() {
         when(runApi.get(run.getId())).thenReturn(run);
-        when(sampleApi.list(null, null, null, SET_ID, SampleType.REF, null)).thenReturn(singletonList(REF_SAMPLE));
+        when(sampleApi.list(null, null, null, SET_ID, SampleType.REF, null, null)).thenReturn(singletonList(REF_SAMPLE));
         Page<Blob> page = mockPage();
         Blob validationVcf = mock(Blob.class);
         when(validationVcf.getName()).thenReturn(BARCODE + ".vcf");
@@ -206,7 +206,7 @@ public class SnpCheckTest {
     public void finishedSingleSampleRunComparedToValidationVcfPass() {
         Run singleSampleRun = run(Ini.SINGLESAMPLE_INI);
         when(runApi.get(run.getId())).thenReturn(singleSampleRun);
-        when(sampleApi.list(null, null, null, SET_ID, SampleType.REF, null)).thenReturn(singletonList(REF_SAMPLE));
+        when(sampleApi.list(null, null, null, SET_ID, SampleType.REF, null, null)).thenReturn(singletonList(REF_SAMPLE));
         setupValidationVcfs(VcfComparison.Result.PASS, singleSampleRun, BARCODE);
         victim.handle(stagedEvent(Context.DIAGNOSTIC));
         UpdateRun update = captureUpdate();
@@ -231,9 +231,9 @@ public class SnpCheckTest {
     public void publishesPipelineValidatedEventOnCompletion() {
         fullSnpcheckWithResult(VcfComparison.Result.PASS, BARCODE);
         victim.handle(stagedEvent(Context.DIAGNOSTIC));
-        ArgumentCaptor<PubsubMessage> pubsubMessageArgumentCaptor = ArgumentCaptor.forClass(PubsubMessage.class);
-        verify(validatedTopicPublisher, times(1)).publish(pubsubMessageArgumentCaptor.capture());
-        PipelineValidated validated = readEvent(pubsubMessageArgumentCaptor, PipelineValidated.class);
+        ArgumentCaptor<PipelineValidated> pipelineValidatedArgumentCaptor = ArgumentCaptor.forClass(PipelineValidated.class);
+        verify(validatedTopicPublisher, times(1)).publish(pipelineValidatedArgumentCaptor.capture());
+        PipelineValidated validated = pipelineValidatedArgumentCaptor.getValue();
         assertWrappedOriginalEvent(validated, Context.DIAGNOSTIC);
     }
 
@@ -243,9 +243,9 @@ public class SnpCheckTest {
         when(runApi.list(null, Ini.SOMATIC_INI, SET_ID, null, null, null, null, null))
                 .thenReturn(List.of(new Run().status(Status.VALIDATED).context("RESEARCH"), new Run().status(Status.VALIDATED).context("DIAGNOSTIC")));
         victim.handle(stagedEvent(Context.RESEARCH));
-        ArgumentCaptor<PubsubMessage> pubsubMessageArgumentCaptor = ArgumentCaptor.forClass(PubsubMessage.class);
-        verify(validatedTopicPublisher, times(1)).publish(pubsubMessageArgumentCaptor.capture());
-        PipelineValidated validated = readEvent(pubsubMessageArgumentCaptor, PipelineValidated.class);
+        ArgumentCaptor<PipelineValidated> pipelineValidatedArgumentCaptor = ArgumentCaptor.forClass(PipelineValidated.class);
+        verify(validatedTopicPublisher, times(1)).publish(pipelineValidatedArgumentCaptor.capture());
+        PipelineValidated validated = pipelineValidatedArgumentCaptor.getValue();
         assertWrappedOriginalEvent(validated, Context.RESEARCH);
         assertValidatedInApi();
     }
@@ -256,9 +256,9 @@ public class SnpCheckTest {
         when(runApi.list(null, Ini.SOMATIC_INI, SET_ID, null, null, null, null, null))
                 .thenReturn(List.of(new Run().status(Status.VALIDATED).context("RESEARCH"), new Run().status(Status.VALIDATED).context("SERVICES")));
         victim.handle(stagedEvent(Context.RESEARCH));
-        ArgumentCaptor<PubsubMessage> pubsubMessageArgumentCaptor = ArgumentCaptor.forClass(PubsubMessage.class);
-        verify(validatedTopicPublisher, times(1)).publish(pubsubMessageArgumentCaptor.capture());
-        PipelineValidated validated = readEvent(pubsubMessageArgumentCaptor, PipelineValidated.class);
+        ArgumentCaptor<PipelineValidated> pipelineValidatedArgumentCaptor = ArgumentCaptor.forClass(PipelineValidated.class);
+        verify(validatedTopicPublisher, times(1)).publish(pipelineValidatedArgumentCaptor.capture());
+        PipelineValidated validated = pipelineValidatedArgumentCaptor.getValue();
         assertWrappedOriginalEvent(validated, Context.RESEARCH);
         assertValidatedInApi();
     }
@@ -290,12 +290,12 @@ public class SnpCheckTest {
                 vcfComparison,
                 turquoiseTopicPublisher,
                 validatedTopicPublisher,
-                OBJECT_MAPPER, true, false);
+                true, false);
         when(runApi.get(run.getId())).thenReturn(run.ini(Ini.RERUN_INI.getValue()));
         victim.handle(stagedEvent(Context.RESEARCH));
-        ArgumentCaptor<PubsubMessage> pubsubMessageArgumentCaptor = ArgumentCaptor.forClass(PubsubMessage.class);
-        verify(validatedTopicPublisher, times(1)).publish(pubsubMessageArgumentCaptor.capture());
-        PipelineValidated validated = readEvent(pubsubMessageArgumentCaptor, PipelineValidated.class);
+        ArgumentCaptor<PipelineValidated> pipelineValidatedArgumentCaptor = ArgumentCaptor.forClass(PipelineValidated.class);
+        verify(validatedTopicPublisher, times(1)).publish(pipelineValidatedArgumentCaptor.capture());
+        PipelineValidated validated = pipelineValidatedArgumentCaptor.getValue();
         assertWrappedOriginalEvent(validated, Context.RESEARCH);
         assertValidatedInApi();
     }
@@ -329,8 +329,8 @@ public class SnpCheckTest {
     }
 
     private void setupSnpcheckPassAndVerifyApiAndEventUpdates(PipelineComplete event) {
-        when(sampleApi.list(null, null, null, SET_ID, SampleType.REF, null)).thenReturn(singletonList(REF_SAMPLE));
-        when(sampleApi.list(null, null, null, SET_ID, SampleType.TUMOR, null)).thenReturn(singletonList(TUMOR_SAMPLE));
+        when(sampleApi.list(null, null, null, SET_ID, SampleType.REF, null, null)).thenReturn(singletonList(REF_SAMPLE));
+        when(sampleApi.list(null, null, null, SET_ID, SampleType.TUMOR, null, null)).thenReturn(singletonList(TUMOR_SAMPLE));
         setupValidationVcfs(Result.PASS, run, BARCODE);
         victim.handle(event);
         verify(vcfComparison).compare(any(), any(), any(), anyBoolean());
@@ -338,8 +338,8 @@ public class SnpCheckTest {
     }
 
     private void setupSnpcheckFailAndVerifyApiUpdateButNoEvents(PipelineComplete event) {
-        when(sampleApi.list(null, null, null, SET_ID, SampleType.REF, null)).thenReturn(singletonList(REF_SAMPLE));
-        when(sampleApi.list(null, null, null, SET_ID, SampleType.TUMOR, null)).thenReturn(singletonList(TUMOR_SAMPLE));
+        when(sampleApi.list(null, null, null, SET_ID, SampleType.REF, null, null)).thenReturn(singletonList(REF_SAMPLE));
+        when(sampleApi.list(null, null, null, SET_ID, SampleType.TUMOR, null, null)).thenReturn(singletonList(TUMOR_SAMPLE));
         setupValidationVcfs(Result.FAIL, run, BARCODE);
         victim.handle(event);
         verify(validatedTopicPublisher, never()).publish(any());
@@ -352,14 +352,14 @@ public class SnpCheckTest {
 
     private void setupHealthcheckAndVerifyNoApiUpdateButEvent(PipelineComplete event) {
         run = run.status(Status.FAILED).failure(new RunFailure().type(TypeEnum.QCFAILURE));
-        when(sampleApi.list(null, null, null, SET_ID, SampleType.REF, null)).thenReturn(singletonList(REF_SAMPLE));
-        when(sampleApi.list(null, null, null, SET_ID, SampleType.TUMOR, null)).thenReturn(singletonList(TUMOR_SAMPLE));
+        when(sampleApi.list(null, null, null, SET_ID, SampleType.REF, null, null)).thenReturn(singletonList(REF_SAMPLE));
+        when(sampleApi.list(null, null, null, SET_ID, SampleType.TUMOR, null, null)).thenReturn(singletonList(TUMOR_SAMPLE));
         setupValidationVcfs(Result.PASS, run, BARCODE);
         victim.handle(event);
         verify(runApi, never()).update(any(), any());
-        ArgumentCaptor<PubsubMessage> pubsubMessageArgumentCaptor = ArgumentCaptor.forClass(PubsubMessage.class);
-        verify(validatedTopicPublisher, times(1)).publish(pubsubMessageArgumentCaptor.capture());
-        assertWrappedOriginalEvent(readEvent(pubsubMessageArgumentCaptor, PipelineValidated.class), Context.DIAGNOSTIC);
+        ArgumentCaptor<PipelineValidated> pipelineValidatedArgumentCaptor = ArgumentCaptor.forClass(PipelineValidated.class);
+        verify(validatedTopicPublisher, times(1)).publish(pipelineValidatedArgumentCaptor.capture());
+        assertWrappedOriginalEvent(pipelineValidatedArgumentCaptor.getValue(), Context.DIAGNOSTIC);
     }
 
     private void handleAndVerifyNoApiOrEventUpdates(PipelineComplete event) {
@@ -387,8 +387,8 @@ public class SnpCheckTest {
 
     private void fullSnpcheckWithResult(final VcfComparison.Result result, final String barcode) {
         when(runApi.get(run.getId())).thenReturn(run);
-        when(sampleApi.list(null, null, null, SET_ID, SampleType.REF, null)).thenReturn(singletonList(REF_SAMPLE));
-        when(sampleApi.list(null, null, null, SET_ID, SampleType.TUMOR, null)).thenReturn(singletonList(TUMOR_SAMPLE));
+        when(sampleApi.list(null, null, null, SET_ID, SampleType.REF, null, null)).thenReturn(singletonList(REF_SAMPLE));
+        when(sampleApi.list(null, null, null, SET_ID, SampleType.TUMOR, null, null)).thenReturn(singletonList(TUMOR_SAMPLE));
         setupValidationVcfs(result, run, barcode);
     }
 

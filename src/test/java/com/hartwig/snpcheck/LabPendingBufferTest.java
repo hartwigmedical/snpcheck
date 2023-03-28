@@ -7,9 +7,9 @@ import static org.mockito.Mockito.verify;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
-import com.hartwig.events.Analysis;
-import com.hartwig.events.Pipeline;
-import com.hartwig.events.PipelineComplete;
+import com.hartwig.events.pipeline.Analysis;
+import com.hartwig.events.pipeline.Pipeline;
+import com.hartwig.events.pipeline.PipelineComplete;
 
 import org.junit.Test;
 
