@@ -22,8 +22,8 @@ import com.hartwig.events.pipeline.Analysis.Type;
 import com.hartwig.events.pipeline.Pipeline.Context;
 import com.hartwig.events.pubsub.EventPublisher;
 import com.hartwig.snpcheck.VcfComparison.Result;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import java.util.Collections;
@@ -33,6 +33,7 @@ import java.util.Map;
 import static java.util.Collections.emptyList;
 import static java.util.Collections.singletonList;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
@@ -64,7 +65,7 @@ public class SnpCheckTest {
     }
 
     @SuppressWarnings("unchecked")
-    @Before
+    @BeforeEach
     public void setUp() {
         run = run(Ini.SOMATIC_INI);
         runApi = mock(RunApi.class);
@@ -263,12 +264,14 @@ public class SnpCheckTest {
         assertValidatedInApi();
     }
 
-    @Test(expected = IllegalStateException.class)
+    @Test
     public void illegalStateOnResearchRunsWithoutDiagnosticRun() {
         when(runApi.get(run.getId())).thenReturn(run);
         when(runApi.list(null, Ini.SOMATIC_INI, SET_ID, null, null, null, null, null))
                 .thenReturn(Collections.emptyList());
-        victim.handle(stagedEvent(Context.RESEARCH));
+        assertThrows(IllegalStateException.class, () -> {
+            victim.handle(stagedEvent(Context.RESEARCH));
+        });
     }
 
     @Test

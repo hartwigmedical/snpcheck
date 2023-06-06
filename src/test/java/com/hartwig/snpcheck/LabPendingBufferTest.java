@@ -10,8 +10,8 @@ import java.util.concurrent.TimeUnit;
 import com.hartwig.events.pipeline.Analysis;
 import com.hartwig.events.pipeline.Pipeline;
 import com.hartwig.events.pipeline.PipelineComplete;
+import org.junit.jupiter.api.Test;
 
-import org.junit.Test;
 
 public class LabPendingBufferTest {
 
