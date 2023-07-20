@@ -1,40 +1,7 @@
 steps:
-  - id: 'Populate Maven cache from bucket'
-    name: 'gcr.io/cloud-builders/gsutil'
-    args:
-      - '-m'
-      - 'rsync'
-      - '-r'
-      - 'gs://hmf-build-caches/snpcheck/.m2'
-      - '/cache/.m2'
-    volumes:
-      - path: '/cache/.m2'
-        name: 'm2_cache'
-
-  - id: 'Build application'
-    name: 'eu.gcr.io/hmf-build/maven:3.6.0-jdk-11-slim-libarray-diff-perl'
-    entrypoint: 'mvn'
-    args:
-      - 'install'
-      - '--batch-mode'
-      - '--activate-profiles'
-      - 'release'
-    volumes:
-      - path: '/cache/.m2'
-        name: 'm2_cache'
-    env:
-      - MAVEN_OPTS=-Dmaven.repo.local=/cache/.m2
-  - id: 'Save Maven cache'
-    name: 'gcr.io/cloud-builders/gsutil'
-    args:
-      - '-m'
-      - 'rsync'
-      - '-r'
-      - '/cache/.m2'
-      - 'gs://hmf-build-caches/snpcheck/.m2/'
-    volumes:
-      - path: '/cache/.m2'
-        name: 'm2_cache'
+  - id: 'Maven build using cache'
+    name: 'eu.gcr.io/hmf-build/maven-cache'
+    args: ['install --activate-profiles release --batch-mode']
   - id: 'Publish docker image'
     name: 'eu.gcr.io/hmf-build/docker-tag'
     args: ['eu.gcr.io/hmf-build/snpcheck', '$TAG_NAME']
