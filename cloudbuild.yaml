@@ -1,7 +1,7 @@
 steps:
   - id: 'Maven build using cache'
     name: 'eu.gcr.io/hmf-build/maven-cache'
-    args: ['install --activate-profiles release --batch-mode']
+    args: ['package --activate-profiles release --batch-mode']
   - id: 'Publish docker image'
     name: 'eu.gcr.io/hmf-build/docker-tag'
     args: ['eu.gcr.io/hmf-build/snpcheck', '$TAG_NAME']
