@@ -71,6 +71,7 @@ public class SnpCheck implements Handler<PipelineComplete> {
                 validateRunWithSnpcheck(event, run);
             }
         }
+        LOGGER.info("Ignored event [{}]", event);
     }
 
     private void validateRunWithSnpcheck(final PipelineComplete event, final Run run) {
