@@ -31,13 +31,20 @@
     <properties>
         <main.class>com.hartwig.snpcheck.SnpCheckMain</main.class>
         <cloud-sdk.version>2.12.0</cloud-sdk.version>
+        <jackson-core.version>2.14.2</jackson-core.version>
+        <hmf-api-java-client.version>3.2.4</hmf-api-java-client.version>
     </properties>
 
     <dependencies>
         <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-core</artifactId>
+            <version>${jackson-core.version}</version>
+        </dependency>
+        <dependency>
             <groupId>com.hartwig.api</groupId>
             <artifactId>java-client</artifactId>
-            <version>1.30.1</version>
+            <version>${hmf-api-java-client.version}</version>
             <scope>compile</scope>
         </dependency>
         <dependency>

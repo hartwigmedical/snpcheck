@@ -109,7 +109,7 @@ public class SnpCheck implements Handler<PipelineComplete> {
     }
 
     private void validateResearchWhenSourceRunValidated(final PipelineComplete event, final Run run) {
-        @SuppressWarnings("ConstantConditions") Run mostRecentDiagnostic = runs.list(null, Ini.SOMATIC_INI, run.getSet().getId(), null, null, null, null, null)
+        Run mostRecentDiagnostic = runs.callList(null, Ini.SOMATIC_INI, run.getSet().getId(), null, null, null, null, null, null)
                 .stream()
                 .filter(r -> !r.getContext().equals("RESEARCH"))
                 .max(Comparator.comparing(Run::getEndTime))
@@ -149,7 +149,9 @@ public class SnpCheck implements Handler<PipelineComplete> {
     }
 
     private VcfComparison.Result doComparison(final Run run, final Sample refSample, final Blob valVcf) {
-        String refVcfPath = String.format("%s/%s/snp_genotype/snp_genotype_output.vcf", run.getSet().getName(), refSample.getName());
+        boolean isDiagnosticRun = Pipeline.Context.DIAGNOSTIC.toString().equalsIgnoreCase(run.getContext());
+        String refSampleAnalysisName = isDiagnosticRun ? refSample.getReportingId() : refSample.getName();
+        String refVcfPath = String.format("%s/%s/snp_genotype/snp_genotype_output.vcf", run.getSet().getName(), refSampleAnalysisName);
         Optional<Blob> maybeRefVcf =
                 Optional.ofNullable(pipelineStorage.get(run.getBucket())).flatMap(b -> Optional.ofNullable(b.get(refVcfPath)));
         if (maybeRefVcf.isPresent()) {
@@ -184,7 +186,7 @@ public class SnpCheck implements Handler<PipelineComplete> {
     }
 
     private static Optional<Sample> onlyOne(final SampleApi api, RunSet set, SampleType type) {
-        List<Sample> samples = api.list(null, null, null, set.getId(), type, null, null);
+        List<Sample> samples = api.callList(null, null, null, set.getId(), type, null, null);
         if (samples.size() > 1) {
             throw new IllegalStateException(String.format("Multiple samples found for type [%s] and set [%s]", type, set.getName()));
         }
