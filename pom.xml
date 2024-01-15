@@ -7,7 +7,7 @@
     <parent>
         <groupId>com.hartwig.cloud-sdk</groupId>
         <artifactId>cloud-sdk</artifactId>
-        <version>2.12.0</version>
+        <version>3.0.0</version>
         <relativePath/>
     </parent>
     <groupId>com.hartwig</groupId>
@@ -30,9 +30,9 @@
 
     <properties>
         <main.class>com.hartwig.snpcheck.SnpCheckMain</main.class>
-        <cloud-sdk.version>2.12.0</cloud-sdk.version>
         <jackson-core.version>2.14.2</jackson-core.version>
         <hmf-api-java-client.version>3.2.4</hmf-api-java-client.version>
+        <events.version>local-SNAPSHOT</events.version>
     </properties>
 
     <dependencies>
@@ -50,15 +50,28 @@
         <dependency>
             <groupId>com.hartwig.events</groupId>
             <artifactId>events-pipeline</artifactId>
+            <version>${events.version}</version>
         </dependency>
         <dependency>
             <groupId>com.hartwig.events</groupId>
             <artifactId>events-pubsub</artifactId>
+            <version>${events.version}</version>
         </dependency>
         <dependency>
-            <groupId>com.hartwig.cloud-sdk</groupId>
-            <artifactId>cli</artifactId>
-            <version>${cloud-sdk.version}</version>
+            <groupId>com.hartwig.events</groupId>
+            <artifactId>events-aqua</artifactId>
+            <version>${events.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.hartwig.events</groupId>
+            <artifactId>events-turquoise</artifactId>
+            <version>${events.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.hartwig.events</groupId>
+            <artifactId>events-local</artifactId>
+            <version>${events.version}</version>
+            <scope>test</scope>
         </dependency>
 
         <dependency>
