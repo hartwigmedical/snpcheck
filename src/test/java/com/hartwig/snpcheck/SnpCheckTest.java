@@ -15,6 +15,7 @@ import static org.mockito.Mockito.when;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 
 import com.google.api.gax.paging.Page;
 import com.google.cloud.storage.Blob;
@@ -32,7 +33,9 @@ import com.hartwig.api.model.SampleType;
 import com.hartwig.api.model.Status;
 import com.hartwig.api.model.UpdateRun;
 import com.hartwig.events.EventPublisher;
+import com.hartwig.events.aqua.SnpCheckCompletedEvent;
 import com.hartwig.events.aqua.model.AquaEvent;
+import com.hartwig.events.aqua.model.AquaEventType;
 import com.hartwig.events.local.LocalEventBuilder;
 import com.hartwig.events.pipeline.Analysis;
 import com.hartwig.events.pipeline.Analysis.Molecule;
@@ -144,6 +147,11 @@ public class SnpCheckTest {
     @Test
     public void noEventPublishedOnSnpCheckFailure() {
         setupSnpcheckFailAndVerifyApiUpdateButNoEvents(stagedEvent(Context.DIAGNOSTIC));
+        var aquaEvents = eventBuilder.getQueueBuffer(new AquaEvent.EventDescriptor());
+        assertThat(aquaEvents).hasSize(1);
+        var event = (SnpCheckCompletedEvent) aquaEvents.get(0);
+        assertThat(event.type()).isEqualTo(AquaEventType.SNP_CHECK_COMPLETED);
+        assertThat(event.snpCheckResult()).isEqualTo("FAIL");
     }
 
     @Test
@@ -237,6 +245,20 @@ public class SnpCheckTest {
     }
 
     @Test
+    public void publishesAquaEventOnDiagnosticCompletion() {
+        fullSnpcheckWithResult(VcfComparison.Result.PASS, BARCODE);
+        victim.handle(stagedEvent(Context.DIAGNOSTIC));
+        var aquaEvents = eventBuilder.getQueueBuffer(new AquaEvent.EventDescriptor());
+        assertThat(aquaEvents).hasSize(1);
+        var event = (SnpCheckCompletedEvent) aquaEvents.get(0);
+        assertThat(event.type()).isEqualTo(AquaEventType.SNP_CHECK_COMPLETED);
+        assertThat(event.barcode()).isEqualTo(BARCODE);
+        assertThat(event.snpCheckResult()).isEqualTo("PASS");
+        assertThat(event.setName()).isEqualTo("set");
+        assertThat(event.context()).isEqualTo(Context.DIAGNOSTIC);
+    }
+
+    @Test
     public void publishesPipelineValidatedEventOnCompletion() {
         fullSnpcheckWithResult(VcfComparison.Result.PASS, BARCODE);
         victim.handle(stagedEvent(Context.DIAGNOSTIC));
@@ -268,6 +290,30 @@ public class SnpCheckTest {
     }
 
     @Test
+    public void publishesAquaEventOnResearchCompletion() {
+        when(runApi.get(run.getId())).thenReturn(run);
+        when(runApi.callList(null,
+                Ini.SOMATIC_INI,
+                SET_ID,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null)).thenReturn(List.of(run(Ini.SOMATIC_INI).status(Status.VALIDATED).context("RESEARCH"),
+                run(Ini.SOMATIC_INI).status(Status.VALIDATED).context("DIAGNOSTIC")));
+        victim.handle(stagedEvent(Context.RESEARCH));
+        var aquaEvents = eventBuilder.getQueueBuffer(new AquaEvent.EventDescriptor());
+        assertThat(aquaEvents).hasSize(1);
+        var event = (SnpCheckCompletedEvent) aquaEvents.get(0);
+        assertThat(event.type()).isEqualTo(AquaEventType.SNP_CHECK_COMPLETED);
+        assertThat(event.barcode()).isEqualTo(BARCODE);
+        assertThat(event.snpCheckResult()).isEqualTo("PASS");
+        assertThat(event.setName()).isEqualTo("set");
+        assertThat(event.context()).isEqualTo(Context.RESEARCH);
+    }
+
+    @Test
     public void validatesResearchRunsWithServicesSnpcheck() {
         when(runApi.get(run.getId())).thenReturn(run);
         when(runApi.callList(null,
@@ -292,9 +338,9 @@ public class SnpCheckTest {
     public void illegalStateOnResearchRunsWithoutDiagnosticRun() {
         when(runApi.get(run.getId())).thenReturn(run);
         when(runApi.callList(null, Ini.SOMATIC_INI, SET_ID, null, null, null, null, null, null)).thenReturn(Collections.emptyList());
-        assertThrows(IllegalStateException.class, () -> {
-            victim.handle(stagedEvent(Context.RESEARCH));
-        });
+        assertThrows(IllegalStateException.class, () -> victim.handle(stagedEvent(Context.RESEARCH)));
+        var aquaEvents = eventBuilder.getQueueBuffer(new AquaEvent.EventDescriptor());
+        assertThat(aquaEvents).isEmpty();
     }
 
     @Test
@@ -313,6 +359,12 @@ public class SnpCheckTest {
         victim.handle(stagedEvent(Context.RESEARCH));
         var validatedEvents = eventBuilder.getQueueBuffer(new PipelineValidated.EventDescriptor());
         assertThat(validatedEvents).isEmpty();
+        var aquaEvents = eventBuilder.getQueueBuffer(new AquaEvent.EventDescriptor());
+        assertThat(aquaEvents).hasSize(1);
+        var event = (SnpCheckCompletedEvent) aquaEvents.get(0);
+        assertThat(event.type()).isEqualTo(AquaEventType.SNP_CHECK_COMPLETED);
+        assertThat(event.barcode()).isEqualTo(BARCODE);
+        assertThat(event.snpCheckResult()).isEqualTo("FAIL");
     }
 
     @Test

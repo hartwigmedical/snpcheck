@@ -78,13 +78,6 @@ public class SnpCheck implements EventHandler<PipelineComplete> {
         if (passthru) {
             LOGGER.info("Passing through event for sample [{}]", event.pipeline().sample());
             publishAndUpdateApiValidated(event, run);
-            var aquaEvent = SnpCheckCompletedEvent.builder()
-                    .timestamp(Instant.now())
-                    .barcode(event.pipeline().sample())
-                    .setName(run.getSet().getName())
-                    .context(event.pipeline().context())
-                    .build();
-            aquaPublisher.publish(aquaEvent);
         } else if (run.getIni().equals(Ini.SOMATIC_INI.getValue()) || run.getIni().equals(Ini.SINGLESAMPLE_INI.getValue())) {
             LOGGER.info("Received a SnpCheck candidate [{}] for run [{}]", run.getSet().getName(), run.getId());
             if (event.pipeline().context().equals(Pipeline.Context.RESEARCH)) {
