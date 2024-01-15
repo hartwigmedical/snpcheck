@@ -1,5 +1,6 @@
 package com.hartwig.snpcheck;
 
+import java.time.Instant;
 import java.time.ZonedDateTime;
 import java.util.Collections;
 import java.util.Comparator;
@@ -25,6 +26,8 @@ import com.hartwig.api.model.Status;
 import com.hartwig.api.model.UpdateRun;
 import com.hartwig.events.EventHandler;
 import com.hartwig.events.EventPublisher;
+import com.hartwig.events.aqua.SnpCheckCompletedEvent;
+import com.hartwig.events.aqua.model.AquaEvent;
 import com.hartwig.events.pipeline.Pipeline;
 import com.hartwig.events.pipeline.PipelineComplete;
 import com.hartwig.events.pipeline.PipelineValidated;
@@ -47,21 +50,23 @@ public class SnpCheck implements EventHandler<PipelineComplete> {
     private final Storage pipelineStorage;
     private final String bucketName;
     private final VcfComparison vcfComparison;
-    private final EventPublisher<TurquoiseEvent> turquoiseTopicPublisher;
+    private final EventPublisher<TurquoiseEvent> turquoisePublisher;
+    private final EventPublisher<AquaEvent> aquaPublisher;
     private final EventPublisher<PipelineValidated> validatedEventPublisher;
     private final LabPendingBuffer labPendingBuffer;
     private final boolean passthru;
     private final boolean alwaysPass;
 
     public SnpCheck(RunApi runs, SampleApi samples, Storage pipelineStorage, String bucketName, VcfComparison vcfComparison,
-            EventPublisher<TurquoiseEvent> turquoiseTopicPublisher, EventPublisher<PipelineValidated> validatedEventPublisher,
-            boolean passthru, boolean alwaysPass) {
+            EventPublisher<TurquoiseEvent> turquoisePublisher, EventPublisher<AquaEvent> aquaPublisher,
+            EventPublisher<PipelineValidated> validatedEventPublisher, boolean passthru, boolean alwaysPass) {
         this.runs = runs;
         this.samples = samples;
         this.pipelineStorage = pipelineStorage;
         this.bucketName = bucketName;
         this.vcfComparison = vcfComparison;
-        this.turquoiseTopicPublisher = turquoiseTopicPublisher;
+        this.turquoisePublisher = turquoisePublisher;
+        this.aquaPublisher = aquaPublisher;
         this.validatedEventPublisher = validatedEventPublisher;
         this.passthru = passthru;
         this.alwaysPass = alwaysPass;
@@ -73,6 +78,13 @@ public class SnpCheck implements EventHandler<PipelineComplete> {
         if (passthru) {
             LOGGER.info("Passing through event for sample [{}]", event.pipeline().sample());
             publishAndUpdateApiValidated(event, run);
+            var aquaEvent = SnpCheckCompletedEvent.builder()
+                    .timestamp(Instant.now())
+                    .barcode(event.pipeline().sample())
+                    .setName(run.getSet().getName())
+                    .context(event.pipeline().context())
+                    .build();
+            aquaPublisher.publish(aquaEvent);
         } else if (run.getIni().equals(Ini.SOMATIC_INI.getValue()) || run.getIni().equals(Ini.SINGLESAMPLE_INI.getValue())) {
             LOGGER.info("Received a SnpCheck candidate [{}] for run [{}]", run.getSet().getName(), run.getId());
             if (event.pipeline().context().equals(Pipeline.Context.RESEARCH)) {
@@ -84,36 +96,45 @@ public class SnpCheck implements EventHandler<PipelineComplete> {
     }
 
     private void validateRunWithSnpcheck(final PipelineComplete event, final Run run) {
-        if (run.getStatus() == Status.FINISHED || runFailedQc(run)) {
-            Iterable<Blob> valVcfs = Optional.ofNullable(pipelineStorage.list(bucketName, Storage.BlobListOption.prefix(SNPCHECK_VCFS)))
-                    .map(Page::iterateAll)
-                    .orElse(Collections.emptyList());
-            Optional<Sample> maybeRefSample = onlyOne(samples, run.getSet(), SampleType.REF);
-            Optional<Sample> maybeTumorSample = onlyOne(samples, run.getSet(), SampleType.TUMOR);
-            if (maybeRefSample.isPresent()) {
-                Sample refSample = maybeRefSample.get();
-                Optional<Blob> maybeValVcf = findValidationVcf(valVcfs, refSample);
-                if (maybeValVcf.isPresent()) {
-                    Result result = doComparison(run, refSample, maybeValVcf.get());
-                    publishTurquoiseEvent(maybeTumorSample.map(Sample::getName).orElse(refSample.getName()), result.name());
-                    if (result.equals(Result.PASS)) {
-                        publishValidated(event);
-                    }
-                } else {
-                    LOGGER.info("No validation VCF available for set [{}].", run.getSet().getName());
-                    labPendingBuffer.add(event);
-                }
-            } else {
-                LOGGER.warn("Set [{}] had no ref sample available in the API. Unable to locate validation VCF.", run.getSet().getName());
-                apiFailed(run, TypeEnum.TECHNICALFAILURE);
-            }
-        } else {
+        if (run.getStatus() != Status.FINISHED && !runFailedQc(run)) {
             LOGGER.info("Skipping run with status [{}]", run.getStatus());
+            return;
+        }
+        Iterable<Blob> valVcfs = Optional.ofNullable(pipelineStorage.list(bucketName, Storage.BlobListOption.prefix(SNPCHECK_VCFS)))
+                .map(Page::iterateAll)
+                .orElse(Collections.emptyList());
+        var runSet = run.getSet();
+        Optional<Sample> maybeRefSample = onlyOne(samples, runSet, SampleType.REF);
+        Optional<Sample> maybeTumorSample = onlyOne(samples, runSet, SampleType.TUMOR);
+        if (maybeRefSample.isEmpty()) {
+            LOGGER.warn("Set [{}] had no ref sample available in the API. Unable to locate validation VCF.", runSet.getName());
+            apiFailed(run, TypeEnum.TECHNICALFAILURE);
+            return;
+        }
+        Sample refSample = maybeRefSample.get();
+        Optional<Blob> maybeValVcf = findValidationVcf(valVcfs, refSample);
+        if (maybeValVcf.isEmpty()) {
+            LOGGER.info("No validation VCF available for runSet [{}].", runSet.getName());
+            labPendingBuffer.add(event);
+            return;
+        }
+        Result result = doComparison(run, refSample, maybeValVcf.get());
+        publishTurquoiseEvent(maybeTumorSample.map(Sample::getName).orElse(refSample.getName()), result.name());
+        var aquaEvent = SnpCheckCompletedEvent.builder()
+                .timestamp(Instant.now())
+                .barcode(maybeTumorSample.map(Sample::getBarcode).orElse(refSample.getBarcode()))
+                .snpCheckResult(result.name())
+                .setName(runSet.getName())
+                .context(event.pipeline().context())
+                .build();
+        aquaPublisher.publish(aquaEvent);
+        if (result.equals(Result.PASS)) {
+            publishValidated(event);
         }
     }
 
     private void publishTurquoiseEvent(String sampleName, String result) {
-        turquoiseTopicPublisher.publish(TurquoiseEvent.builder()
+        turquoisePublisher.publish(TurquoiseEvent.builder()
                 .timestamp(ZonedDateTime.now())
                 .type("snpcheck.completed")
                 .addLabels(Label.of("result", result))
@@ -130,7 +151,8 @@ public class SnpCheck implements EventHandler<PipelineComplete> {
                         "Research run [%s] for set [%s] had no diagnostic run. Cannot validate.",
                         run.getId(),
                         run.getSet().getName())));
-        if (sourceRunHasFailedSnpcheck(mostRecentDiagnostic)) {
+        var failedSnpcheck = sourceRunHasFailedSnpcheck(mostRecentDiagnostic);
+        if (failedSnpcheck) {
             LOGGER.warn("Diagnostic run [{}] for research run [{}], for set [{}] has failed snpcheck. Cannot validate.",
                     mostRecentDiagnostic.getId(),
                     run.getId(),
@@ -141,6 +163,20 @@ public class SnpCheck implements EventHandler<PipelineComplete> {
                     run.getSet().getName());
             publishAndUpdateApiValidated(event, run);
         }
+        var runSet = run.getSet();
+        var result = failedSnpcheck ? Result.FAIL : Result.PASS;
+        var barcode = onlyOne(samples, runSet, SampleType.TUMOR).or(() -> onlyOne(samples, runSet, SampleType.REF))
+                .orElseThrow(() -> new IllegalStateException(String.format("Set [%s] had no samples available in the API",
+                        runSet.getName())))
+                .getBarcode();
+        var aquaEvent = SnpCheckCompletedEvent.builder()
+                .timestamp(Instant.now())
+                .barcode(barcode)
+                .snpCheckResult(result.name())
+                .setName(mostRecentDiagnostic.getSet().getName())
+                .context(event.pipeline().context())
+                .build();
+        aquaPublisher.publish(aquaEvent);
     }
 
     private void publishAndUpdateApiValidated(final PipelineComplete event, final Run run) {

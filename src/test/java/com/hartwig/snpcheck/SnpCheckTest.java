@@ -32,6 +32,7 @@ import com.hartwig.api.model.SampleType;
 import com.hartwig.api.model.Status;
 import com.hartwig.api.model.UpdateRun;
 import com.hartwig.events.EventPublisher;
+import com.hartwig.events.aqua.model.AquaEvent;
 import com.hartwig.events.local.LocalEventBuilder;
 import com.hartwig.events.pipeline.Analysis;
 import com.hartwig.events.pipeline.Analysis.Molecule;
@@ -67,6 +68,7 @@ public class SnpCheckTest {
     private SnpCheck victim;
     private AnalysisOutputBlob outputBlob;
     private LocalEventBuilder eventBuilder;
+    private EventPublisher<AquaEvent> aquaTopicPublisher;
 
     @BeforeEach
     public void setUp() {
@@ -78,8 +80,11 @@ public class SnpCheckTest {
         vcfComparison = mock(VcfComparison.class);
         eventBuilder = new LocalEventBuilder();
         turquoiseTopicPublisher = eventBuilder.newPublisher("turquoise", new TurquoiseEvent.EventDescriptor());
+        aquaTopicPublisher = eventBuilder.newPublisher("aqua", new AquaEvent.EventDescriptor());
         validatedTopicPublisher = eventBuilder.newPublisher("validated", new PipelineValidated.EventDescriptor());
         when(runApi.get(RUN_ID)).thenReturn(run);
+        when(sampleApi.callList(null, null, null, SET_ID, SampleType.REF, null, null)).thenReturn(singletonList(REF_SAMPLE));
+        when(sampleApi.callList(null, null, null, SET_ID, SampleType.TUMOR, null, null)).thenReturn(singletonList(TUMOR_SAMPLE));
         outputBlob = AnalysisOutputBlob.builder()
                 .barcode("bc")
                 .bucket("bucket")
@@ -94,6 +99,7 @@ public class SnpCheckTest {
                 snpcheckBucket,
                 vcfComparison,
                 turquoiseTopicPublisher,
+                aquaTopicPublisher,
                 validatedTopicPublisher,
                 false,
                 false);
@@ -251,8 +257,8 @@ public class SnpCheckTest {
                 null,
                 null,
                 null,
-                null)).thenReturn(List.of(new Run().status(Status.VALIDATED).context("RESEARCH"),
-                new Run().status(Status.VALIDATED).context("DIAGNOSTIC")));
+                null)).thenReturn(List.of(run(Ini.SOMATIC_INI).status(Status.VALIDATED).context("RESEARCH"),
+                run(Ini.SOMATIC_INI).status(Status.VALIDATED).context("DIAGNOSTIC")));
         victim.handle(stagedEvent(Context.RESEARCH));
         var validatedEvents = eventBuilder.getQueueBuffer(new PipelineValidated.EventDescriptor());
         assertThat(validatedEvents).hasSize(1);
@@ -272,8 +278,8 @@ public class SnpCheckTest {
                 null,
                 null,
                 null,
-                null)).thenReturn(List.of(new Run().status(Status.VALIDATED).context("RESEARCH"),
-                new Run().status(Status.VALIDATED).context("SERVICES")));
+                null)).thenReturn(List.of(run(Ini.SOMATIC_INI).status(Status.VALIDATED).context("RESEARCH"),
+                run(Ini.SOMATIC_INI).status(Status.VALIDATED).context("SERVICES")));
         victim.handle(stagedEvent(Context.RESEARCH));
         var validatedEvents = eventBuilder.getQueueBuffer(new PipelineValidated.EventDescriptor());
         assertThat(validatedEvents).hasSize(1);
@@ -302,8 +308,8 @@ public class SnpCheckTest {
                 null,
                 null,
                 null,
-                null)).thenReturn(List.of(new Run().status(Status.VALIDATED).context("RESEARCH"),
-                new Run().context("DIAGNOSTIC").failure(new RunFailure().type(TypeEnum.QCFAILURE).source("SnpCheck"))));
+                null)).thenReturn(List.of(run(Ini.SOMATIC_INI).status(Status.VALIDATED).context("RESEARCH"),
+                run(Ini.SOMATIC_INI).context("DIAGNOSTIC").failure(new RunFailure().type(TypeEnum.QCFAILURE).source("SnpCheck"))));
         victim.handle(stagedEvent(Context.RESEARCH));
         var validatedEvents = eventBuilder.getQueueBuffer(new PipelineValidated.EventDescriptor());
         assertThat(validatedEvents).isEmpty();
@@ -317,6 +323,7 @@ public class SnpCheckTest {
                 snpcheckBucket,
                 vcfComparison,
                 turquoiseTopicPublisher,
+                aquaTopicPublisher,
                 validatedTopicPublisher,
                 true,
                 false);
@@ -350,8 +357,6 @@ public class SnpCheckTest {
     }
 
     private void setupSnpcheckPassAndVerifyApiAndEventUpdates(PipelineComplete event) {
-        when(sampleApi.callList(null, null, null, SET_ID, SampleType.REF, null, null)).thenReturn(singletonList(REF_SAMPLE));
-        when(sampleApi.callList(null, null, null, SET_ID, SampleType.TUMOR, null, null)).thenReturn(singletonList(TUMOR_SAMPLE));
         setupValidationVcfs(Result.PASS, run, BARCODE);
         victim.handle(event);
         verify(vcfComparison).compare(any(), any(), any(), anyBoolean());
@@ -359,8 +364,6 @@ public class SnpCheckTest {
     }
 
     private void setupSnpcheckFailAndVerifyApiUpdateButNoEvents(PipelineComplete event) {
-        when(sampleApi.callList(null, null, null, SET_ID, SampleType.REF, null, null)).thenReturn(singletonList(REF_SAMPLE));
-        when(sampleApi.callList(null, null, null, SET_ID, SampleType.TUMOR, null, null)).thenReturn(singletonList(TUMOR_SAMPLE));
         setupValidationVcfs(Result.FAIL, run, BARCODE);
         victim.handle(event);
         var validatedEvents = eventBuilder.getQueueBuffer(new PipelineValidated.EventDescriptor());
@@ -374,8 +377,6 @@ public class SnpCheckTest {
 
     private void setupHealthcheckAndVerifyNoApiUpdateButEvent(PipelineComplete event) {
         run = run.status(Status.FAILED).failure(new RunFailure().type(TypeEnum.QCFAILURE));
-        when(sampleApi.callList(null, null, null, SET_ID, SampleType.REF, null, null)).thenReturn(singletonList(REF_SAMPLE));
-        when(sampleApi.callList(null, null, null, SET_ID, SampleType.TUMOR, null, null)).thenReturn(singletonList(TUMOR_SAMPLE));
         setupValidationVcfs(Result.PASS, run, BARCODE);
         victim.handle(event);
         verify(runApi, never()).update(any(), any());
@@ -410,8 +411,6 @@ public class SnpCheckTest {
 
     private void fullSnpcheckWithResult(final VcfComparison.Result result, final String barcode) {
         when(runApi.get(run.getId())).thenReturn(run);
-        when(sampleApi.callList(null, null, null, SET_ID, SampleType.REF, null, null)).thenReturn(singletonList(REF_SAMPLE));
-        when(sampleApi.callList(null, null, null, SET_ID, SampleType.TUMOR, null, null)).thenReturn(singletonList(TUMOR_SAMPLE));
         setupValidationVcfs(result, run, barcode);
     }
 
