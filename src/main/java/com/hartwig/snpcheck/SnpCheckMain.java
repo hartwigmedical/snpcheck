@@ -4,7 +4,7 @@ import java.util.concurrent.Callable;
 
 import com.google.cloud.storage.StorageOptions;
 import com.hartwig.api.HmfApi;
-import com.hartwig.events.Event;
+import com.hartwig.events.EventBuilder;
 import com.hartwig.events.EventPublisher;
 import com.hartwig.events.aqua.model.AquaEvent;
 import com.hartwig.events.pipeline.PipelineComplete;
@@ -64,10 +64,11 @@ public class SnpCheckMain implements Callable<Integer> {
             var publisher = pubsubEventBuilder.newPublisher(project, new PipelineValidated.EventDescriptor());
             var subscriber = pubsubEventBuilder.newSubscriber(project, new PipelineComplete.EventDescriptor(), "snpcheck", 1, true);
             EventPublisher<TurquoiseEvent> turquoisePublisher = turquoiseProject == null
-                    ? noopPublisher()
+                    ? EventBuilder.noopPublisher()
                     : pubsubEventBuilder.newPublisher(turquoiseProject, new TurquoiseEvent.EventDescriptor());
-            EventPublisher<AquaEvent> aquaPublisher =
-                    aquaProject == null ? noopPublisher() : pubsubEventBuilder.newPublisher(aquaProject, new AquaEvent.EventDescriptor());
+            EventPublisher<AquaEvent> aquaPublisher = aquaProject == null
+                    ? EventBuilder.noopPublisher()
+                    : pubsubEventBuilder.newPublisher(aquaProject, new AquaEvent.EventDescriptor());
             var api = HmfApi.create(apiUrl);
             subscriber.subscribe(new SnpCheck(api.runs(),
                     api.samples(),
@@ -84,20 +85,6 @@ public class SnpCheckMain implements Callable<Integer> {
             LOGGER.error("Exception while running snpcheck", e);
             return 1;
         }
-    }
-
-    public <T extends Event> EventPublisher<T> noopPublisher() {
-        return new EventPublisher<T>() {
-            @Override
-            public void publish(T event) {
-                // No-op
-            }
-
-            @Override
-            public void stop() {
-                // No-op
-            }
-        };
     }
 
     public static void main(String[] args) {

@@ -15,6 +15,7 @@ import com.google.cloud.storage.Blob;
 import com.google.cloud.storage.Storage;
 import com.hartwig.api.RunApi;
 import com.hartwig.api.SampleApi;
+import com.hartwig.api.helpers.OnlyOne;
 import com.hartwig.api.model.Ini;
 import com.hartwig.api.model.Run;
 import com.hartwig.api.model.RunFailure;
@@ -46,7 +47,7 @@ public class SnpCheck implements EventHandler<PipelineComplete> {
     public static final String SNP_CHECK = "SnpCheck";
 
     private final RunApi runs;
-    private final SampleApi samples;
+    private final SampleApi sampleApi;
     private final Storage pipelineStorage;
     private final String bucketName;
     private final VcfComparison vcfComparison;
@@ -57,11 +58,11 @@ public class SnpCheck implements EventHandler<PipelineComplete> {
     private final boolean passthru;
     private final boolean alwaysPass;
 
-    public SnpCheck(RunApi runs, SampleApi samples, Storage pipelineStorage, String bucketName, VcfComparison vcfComparison,
+    public SnpCheck(RunApi runs, SampleApi sampleApi, Storage pipelineStorage, String bucketName, VcfComparison vcfComparison,
             EventPublisher<TurquoiseEvent> turquoisePublisher, EventPublisher<AquaEvent> aquaPublisher,
             EventPublisher<PipelineValidated> validatedEventPublisher, boolean passthru, boolean alwaysPass) {
         this.runs = runs;
-        this.samples = samples;
+        this.sampleApi = sampleApi;
         this.pipelineStorage = pipelineStorage;
         this.bucketName = bucketName;
         this.vcfComparison = vcfComparison;
@@ -97,8 +98,8 @@ public class SnpCheck implements EventHandler<PipelineComplete> {
                 .map(Page::iterateAll)
                 .orElse(Collections.emptyList());
         var runSet = run.getSet();
-        Optional<Sample> maybeRefSample = onlyOne(samples, runSet, SampleType.REF);
-        Optional<Sample> maybeTumorSample = onlyOne(samples, runSet, SampleType.TUMOR);
+        Optional<Sample> maybeRefSample = findSample(runSet, SampleType.REF);
+        Optional<Sample> maybeTumorSample = findSample(runSet, SampleType.TUMOR);
         if (maybeRefSample.isEmpty()) {
             LOGGER.warn("Set [{}] had no ref sample available in the API. Unable to locate validation VCF.", runSet.getName());
             apiFailed(run, TypeEnum.TECHNICALFAILURE);
@@ -156,12 +157,8 @@ public class SnpCheck implements EventHandler<PipelineComplete> {
                     run.getSet().getName());
             publishAndUpdateApiValidated(event, run);
         }
-        var runSet = run.getSet();
+        var barcode = findBarcode(run);
         var result = failedSnpcheck ? Result.FAIL : Result.PASS;
-        var barcode = onlyOne(samples, runSet, SampleType.TUMOR).or(() -> onlyOne(samples, runSet, SampleType.REF))
-                .orElseThrow(() -> new IllegalStateException(String.format("Set [%s] had no samples available in the API",
-                        runSet.getName())))
-                .getBarcode();
         var aquaEvent = SnpCheckCompletedEvent.builder()
                 .timestamp(Instant.now())
                 .barcode(barcode)
@@ -235,11 +232,16 @@ public class SnpCheck implements EventHandler<PipelineComplete> {
         return run.getStatus() == Status.FAILED && (run.getFailure() != null && run.getFailure().getType() == TypeEnum.QCFAILURE);
     }
 
-    private static Optional<Sample> onlyOne(final SampleApi api, RunSet set, SampleType type) {
-        List<Sample> samples = api.callList(null, null, null, set.getId(), type, null, null);
-        if (samples.size() > 1) {
-            throw new IllegalStateException(String.format("Multiple samples found for type [%s] and set [%s]", type, set.getName()));
-        }
-        return samples.stream().findFirst();
+    private String findBarcode(Run run) {
+        var runSet = run.getSet();
+        return findSample(runSet, SampleType.TUMOR).or(() -> findSample(runSet, SampleType.REF))
+                .orElseThrow(() -> new IllegalStateException(String.format("Set [%s] had no samples available in the API",
+                        runSet.getName())))
+                .getBarcode();
+    }
+
+    private Optional<Sample> findSample(RunSet set, SampleType type) {
+        List<Sample> samples = sampleApi.callList(null, null, null, set.getId(), type, null, null);
+        return OnlyOne.ofNullable(samples, Sample.class);
     }
 }
