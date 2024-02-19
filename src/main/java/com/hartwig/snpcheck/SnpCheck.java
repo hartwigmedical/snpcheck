@@ -118,7 +118,7 @@ public class SnpCheck implements EventHandler<PipelineComplete> {
                 .timestamp(Instant.now())
                 .barcode(maybeTumorSample.map(Sample::getBarcode).orElse(refSample.getBarcode()))
                 .snpCheckResult(result.name())
-                .setName(runSet.getName())
+                .ini(run.getIni())
                 .context(event.pipeline().context())
                 .build();
         aquaPublisher.publish(aquaEvent);
@@ -163,7 +163,7 @@ public class SnpCheck implements EventHandler<PipelineComplete> {
                 .timestamp(Instant.now())
                 .barcode(barcode)
                 .snpCheckResult(result.name())
-                .setName(mostRecentDiagnostic.getSet().getName())
+                .ini(run.getIni())
                 .context(event.pipeline().context())
                 .build();
         aquaPublisher.publish(aquaEvent);

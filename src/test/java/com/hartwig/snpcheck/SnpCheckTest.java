@@ -254,7 +254,7 @@ public class SnpCheckTest {
         assertThat(event.type()).isEqualTo(AquaEventType.SNP_CHECK_COMPLETED);
         assertThat(event.barcode()).isEqualTo(BARCODE);
         assertThat(event.snpCheckResult()).isEqualTo("PASS");
-        assertThat(event.setName()).isEqualTo("set");
+        assertThat(event.ini()).isEqualTo(Ini.SOMATIC_INI.getValue());
         assertThat(event.context()).isEqualTo(Context.DIAGNOSTIC);
     }
 
@@ -309,7 +309,7 @@ public class SnpCheckTest {
         assertThat(event.type()).isEqualTo(AquaEventType.SNP_CHECK_COMPLETED);
         assertThat(event.barcode()).isEqualTo(BARCODE);
         assertThat(event.snpCheckResult()).isEqualTo("PASS");
-        assertThat(event.setName()).isEqualTo("set");
+        assertThat(event.ini()).isEqualTo(Ini.SOMATIC_INI.getValue());
         assertThat(event.context()).isEqualTo(Context.RESEARCH);
     }
 
