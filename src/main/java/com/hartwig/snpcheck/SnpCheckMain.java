@@ -1,49 +1,50 @@
 package com.hartwig.snpcheck;
 
-import com.fasterxml.jackson.databind.DeserializationFeature;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import java.util.concurrent.Callable;
+
 import com.google.cloud.storage.StorageOptions;
-import com.hartwig.cli.options.ApiOptions;
-import com.hartwig.cli.options.PubsubOptions;
-import com.hartwig.cli.options.TurquoiseOptions;
+import com.hartwig.api.HmfApi;
+import com.hartwig.events.EventBuilder;
+import com.hartwig.events.EventPublisher;
+import com.hartwig.events.aqua.model.AquaEvent;
 import com.hartwig.events.pipeline.PipelineComplete;
 import com.hartwig.events.pipeline.PipelineValidated;
-import com.hartwig.events.pubsub.EventPublisher;
-import com.hartwig.events.pubsub.EventSubscriber;
+import com.hartwig.events.pubsub.PubsubEventBuilder;
+import com.hartwig.events.turquoise.TurquoiseEvent;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import picocli.CommandLine;
 
-import java.util.concurrent.Callable;
+import picocli.CommandLine;
 
 public class SnpCheckMain implements Callable<Integer> {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(SnpCheckMain.class);
 
-    @CommandLine.Mixin
-    private final ApiOptions apiOptions = new ApiOptions();
+    @CommandLine.Option(names = { "--api_url" },
+                        description = { "URL to use for HMF API interactions, including protocol and port" },
+                        defaultValue = "http://api")
+    protected String apiUrl;
 
-    @CommandLine.Mixin
-    private final PubsubOptions pubsubOptions = new PubsubOptions();
+    @CommandLine.Option(names = { "--turquoise_project" })
+    protected String turquoiseProject;
 
-    @CommandLine.Mixin
-    private final TurquoiseOptions turquoiseOptions = new TurquoiseOptions();
+    @CommandLine.Option(names = { "--aqua_project" })
+    protected String aquaProject;
 
-    @CommandLine.Option(names = {"--snpcheck_bucket"},
-            defaultValue = "hmf-snpcheck",
-            description = "Bucket in which the snpcheck vcfs are uploaded")
+    @CommandLine.Option(names = { "--snpcheck_bucket" },
+                        defaultValue = "hmf-snpcheck",
+                        description = "Bucket in which the snpcheck vcfs are uploaded")
     private String snpcheckBucketName;
 
-    @CommandLine.Option(names = {"--project"},
-            required = true,
-            description = "Project in which the snpcheck is running")
+    @CommandLine.Option(names = { "--project" },
+                        required = true,
+                        description = "Project in which the snpcheck is running")
     private String project;
 
-    @CommandLine.Option(names = {"--passthru"},
-            defaultValue = "false",
-            description = "Mark all events as validated without invoking the Perl script (contrast with --always-pass).")
+    @CommandLine.Option(names = { "--passthru" },
+                        defaultValue = "false",
+                        description = "Mark all events as validated without invoking the Perl script (contrast with --always-pass).")
     private boolean passthru;
 
     @CommandLine.Option(names = { "--always_pass" },
@@ -59,16 +60,26 @@ public class SnpCheckMain implements Callable<Integer> {
                 return 1;
             }
             LOGGER.info("Snpcheck configured to alwaysPass={} mode.", alwaysPass);
-            EventSubscriber<PipelineComplete> subscriber = pubsubOptions.eventSubscriber(new PipelineComplete.EventDescriptor(), "snpcheck");
-            EventPublisher<PipelineValidated> publisher = pubsubOptions.eventPublisher(new PipelineValidated.EventDescriptor());
-            subscriber.subscribe(new SnpCheck(apiOptions.api().runs(),
-                    apiOptions.api().samples(),
+            var pubsubEventBuilder = new PubsubEventBuilder();
+            var publisher = pubsubEventBuilder.newPublisher(project, new PipelineValidated.EventDescriptor());
+            var subscriber = pubsubEventBuilder.newSubscriber(project, new PipelineComplete.EventDescriptor(), "snpcheck", 1, true);
+            EventPublisher<TurquoiseEvent> turquoisePublisher = turquoiseProject == null
+                    ? EventBuilder.noopPublisher()
+                    : pubsubEventBuilder.newPublisher(turquoiseProject, new TurquoiseEvent.EventDescriptor());
+            EventPublisher<AquaEvent> aquaPublisher = aquaProject == null
+                    ? EventBuilder.noopPublisher()
+                    : pubsubEventBuilder.newPublisher(aquaProject, new AquaEvent.EventDescriptor());
+            var api = HmfApi.create(apiUrl);
+            subscriber.subscribe(new SnpCheck(api.runs(),
+                    api.samples(),
                     StorageOptions.getDefaultInstance().getService(),
                     snpcheckBucketName,
                     new PerlVcfComparison(),
-                    turquoiseOptions.publisher(),
+                    turquoisePublisher,
+                    aquaPublisher,
                     publisher,
-                    passthru, alwaysPass));
+                    passthru,
+                    alwaysPass));
             return 0;
         } catch (Exception e) {
             LOGGER.error("Exception while running snpcheck", e);
