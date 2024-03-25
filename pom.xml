@@ -32,7 +32,7 @@
         <main.class>com.hartwig.snpcheck.SnpCheckMain</main.class>
         <jackson-core.version>2.14.2</jackson-core.version>
         <hmf-api-java-client.version>3.2.4</hmf-api-java-client.version>
-        <app.hartwig-events.version>3.14.0</app.hartwig-events.version>
+        <app.hartwig-events.version>3.15.0-alpha.2</app.hartwig-events.version>
     </properties>
 
     <dependencies>

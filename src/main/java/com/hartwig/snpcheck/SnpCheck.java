@@ -1,30 +1,13 @@
 package com.hartwig.snpcheck;
 
-import java.time.Instant;
-import java.time.ZonedDateTime;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.List;
-import java.util.Optional;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
-import java.util.stream.StreamSupport;
-
 import com.google.api.gax.paging.Page;
 import com.google.cloud.storage.Blob;
 import com.google.cloud.storage.Storage;
 import com.hartwig.api.RunApi;
 import com.hartwig.api.SampleApi;
 import com.hartwig.api.helpers.OnlyOne;
-import com.hartwig.api.model.Ini;
-import com.hartwig.api.model.Run;
-import com.hartwig.api.model.RunFailure;
+import com.hartwig.api.model.*;
 import com.hartwig.api.model.RunFailure.TypeEnum;
-import com.hartwig.api.model.RunSet;
-import com.hartwig.api.model.Sample;
-import com.hartwig.api.model.SampleType;
-import com.hartwig.api.model.Status;
-import com.hartwig.api.model.UpdateRun;
 import com.hartwig.events.EventHandler;
 import com.hartwig.events.EventPublisher;
 import com.hartwig.events.aqua.SnpCheckCompletedEvent;
@@ -36,9 +19,20 @@ import com.hartwig.events.turquoise.TurquoiseEvent;
 import com.hartwig.events.turquoise.model.Label;
 import com.hartwig.events.turquoise.model.Subject;
 import com.hartwig.snpcheck.VcfComparison.Result;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.time.Instant;
+import java.time.ZonedDateTime;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.StreamSupport;
+
+import static com.hartwig.events.pipeline.Pipeline.Context.*;
 
 public class SnpCheck implements EventHandler<PipelineComplete> {
 
@@ -81,12 +75,16 @@ public class SnpCheck implements EventHandler<PipelineComplete> {
             publishAndUpdateApiValidated(event, run);
         } else if (run.getIni().equals(Ini.SOMATIC_INI.getValue()) || run.getIni().equals(Ini.SINGLESAMPLE_INI.getValue())) {
             LOGGER.info("Received a SnpCheck candidate [{}] for run [{}]", run.getSet().getName(), run.getId());
-            if (event.pipeline().context().equals(Pipeline.Context.RESEARCH)) {
+            if (isResearchContext(event.pipeline().context())) {
                 validateResearchWhenSourceRunValidated(event, run);
             } else {
                 validateRunWithSnpcheck(event, run);
             }
         }
+    }
+
+    private boolean isResearchContext(Pipeline.Context context) {
+        return context.equals(RESEARCH) || context.equals(RESEARCH2);
     }
 
     private void validateRunWithSnpcheck(final PipelineComplete event, final Run run) {
@@ -139,7 +137,7 @@ public class SnpCheck implements EventHandler<PipelineComplete> {
     private void validateResearchWhenSourceRunValidated(final PipelineComplete event, final Run run) {
         Run mostRecentDiagnostic = runs.callList(null, Ini.SOMATIC_INI, run.getSet().getId(), null, null, null, null, null, null)
                 .stream()
-                .filter(r -> !r.getContext().equals("RESEARCH"))
+                .filter(r -> !isResearchContext(Pipeline.Context.valueOf(r.getContext())))
                 .max(Comparator.comparing(Run::getEndTime))
                 .orElseThrow(() -> new IllegalStateException(String.format(
                         "Research run [%s] for set [%s] had no diagnostic run. Cannot validate.",
@@ -196,7 +194,7 @@ public class SnpCheck implements EventHandler<PipelineComplete> {
     }
 
     private VcfComparison.Result doComparison(final Run run, final Sample refSample, final Blob valVcf) {
-        boolean isDiagnosticRun = Pipeline.Context.DIAGNOSTIC.toString().equalsIgnoreCase(run.getContext());
+        boolean isDiagnosticRun = DIAGNOSTIC.name().equalsIgnoreCase(run.getContext());
         String refSampleAnalysisName = isDiagnosticRun ? refSample.getReportingId() : refSample.getName();
         String refVcfPath = String.format("%s/%s/snp_genotype/snp_genotype_output.vcf", run.getSet().getName(), refSampleAnalysisName);
         Optional<Blob> maybeRefVcf =

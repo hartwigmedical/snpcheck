@@ -1,56 +1,39 @@
 package com.hartwig.snpcheck;
 
-import static java.util.Collections.emptyList;
-import static java.util.Collections.singletonList;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.anyBoolean;
-import static org.mockito.Mockito.eq;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-
-import java.util.Collections;
-import java.util.List;
-import java.util.Optional;
-
 import com.google.api.gax.paging.Page;
 import com.google.cloud.storage.Blob;
 import com.google.cloud.storage.Bucket;
 import com.google.cloud.storage.Storage;
 import com.hartwig.api.RunApi;
 import com.hartwig.api.SampleApi;
-import com.hartwig.api.model.Ini;
-import com.hartwig.api.model.Run;
-import com.hartwig.api.model.RunFailure;
+import com.hartwig.api.model.*;
 import com.hartwig.api.model.RunFailure.TypeEnum;
-import com.hartwig.api.model.RunSet;
-import com.hartwig.api.model.Sample;
-import com.hartwig.api.model.SampleType;
-import com.hartwig.api.model.Status;
-import com.hartwig.api.model.UpdateRun;
 import com.hartwig.events.EventPublisher;
 import com.hartwig.events.aqua.SnpCheckCompletedEvent;
 import com.hartwig.events.aqua.model.AquaEvent;
 import com.hartwig.events.aqua.model.AquaEventType;
 import com.hartwig.events.local.LocalEventBuilder;
-import com.hartwig.events.pipeline.Analysis;
+import com.hartwig.events.pipeline.*;
 import com.hartwig.events.pipeline.Analysis.Molecule;
 import com.hartwig.events.pipeline.Analysis.Type;
-import com.hartwig.events.pipeline.AnalysisOutputBlob;
-import com.hartwig.events.pipeline.Pipeline;
 import com.hartwig.events.pipeline.Pipeline.Context;
-import com.hartwig.events.pipeline.PipelineComplete;
-import com.hartwig.events.pipeline.PipelineValidated;
 import com.hartwig.events.turquoise.TurquoiseEvent;
 import com.hartwig.snpcheck.VcfComparison.Result;
-
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.ArgumentCaptor;
+
+import java.util.Collections;
+import java.util.List;
+
+import static java.util.Collections.emptyList;
+import static java.util.Collections.singletonList;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
 
 public class SnpCheckTest {
 
@@ -268,8 +251,9 @@ public class SnpCheckTest {
         assertWrappedOriginalEvent(validated, Context.DIAGNOSTIC);
     }
 
-    @Test
-    public void validatesResearchRunsWithDiagnosticSnpcheck() {
+    @ParameterizedTest
+    @EnumSource(value = Pipeline.Context.class, names = {"RESEARCH", "RESEARCH2"})
+    public void validatesResearchRunsWithDiagnosticSnpcheck(Pipeline.Context researchPipelineContext) {
         when(runApi.get(run.getId())).thenReturn(run);
         when(runApi.callList(null,
                 Ini.SOMATIC_INI,
@@ -279,18 +263,24 @@ public class SnpCheckTest {
                 null,
                 null,
                 null,
-                null)).thenReturn(List.of(run(Ini.SOMATIC_INI).status(Status.VALIDATED).context("RESEARCH"),
-                run(Ini.SOMATIC_INI).status(Status.VALIDATED).context("DIAGNOSTIC")));
-        victim.handle(stagedEvent(Context.RESEARCH));
+                null))
+                .thenReturn(
+                        List.of(
+                                run(Ini.SOMATIC_INI).status(Status.VALIDATED).context(researchPipelineContext.name()),
+                                run(Ini.SOMATIC_INI).status(Status.VALIDATED).context("DIAGNOSTIC")
+                        )
+                );
+        victim.handle(stagedEvent(researchPipelineContext));
         var validatedEvents = eventBuilder.getQueueBuffer(new PipelineValidated.EventDescriptor());
         assertThat(validatedEvents).hasSize(1);
         var validated = validatedEvents.get(0);
-        assertWrappedOriginalEvent(validated, Context.RESEARCH);
+        assertWrappedOriginalEvent(validated, researchPipelineContext);
         assertValidatedInApi();
     }
 
-    @Test
-    public void publishesAquaEventOnResearchCompletion() {
+    @ParameterizedTest
+    @EnumSource(value = Pipeline.Context.class, names = {"RESEARCH", "RESEARCH2"})
+    public void publishesAquaEventOnResearchCompletion(Pipeline.Context researchPipelineContext) {
         when(runApi.get(run.getId())).thenReturn(run);
         when(runApi.callList(null,
                 Ini.SOMATIC_INI,
@@ -300,9 +290,14 @@ public class SnpCheckTest {
                 null,
                 null,
                 null,
-                null)).thenReturn(List.of(run(Ini.SOMATIC_INI).status(Status.VALIDATED).context("RESEARCH"),
-                run(Ini.SOMATIC_INI).status(Status.VALIDATED).context("DIAGNOSTIC")));
-        victim.handle(stagedEvent(Context.RESEARCH));
+                null))
+                .thenReturn(
+                        List.of(
+                                run(Ini.SOMATIC_INI).status(Status.VALIDATED).context(researchPipelineContext.name()),
+                                run(Ini.SOMATIC_INI).status(Status.VALIDATED).context("DIAGNOSTIC")
+                        )
+                );
+        victim.handle(stagedEvent(researchPipelineContext));
         var aquaEvents = eventBuilder.getQueueBuffer(new AquaEvent.EventDescriptor());
         assertThat(aquaEvents).hasSize(1);
         var event = (SnpCheckCompletedEvent) aquaEvents.get(0);
@@ -310,11 +305,12 @@ public class SnpCheckTest {
         assertThat(event.barcode()).isEqualTo(BARCODE);
         assertThat(event.snpCheckResult()).isEqualTo("PASS");
         assertThat(event.ini()).isEqualTo(Ini.SOMATIC_INI.getValue());
-        assertThat(event.context()).isEqualTo(Context.RESEARCH);
+        assertThat(event.context()).isEqualTo(researchPipelineContext);
     }
 
-    @Test
-    public void validatesResearchRunsWithServicesSnpcheck() {
+    @ParameterizedTest
+    @EnumSource(value = Pipeline.Context.class, names = {"RESEARCH", "RESEARCH2"})
+    public void validatesResearchRunsWithServicesSnpcheck(Pipeline.Context researchPipelineContext) {
         when(runApi.get(run.getId())).thenReturn(run);
         when(runApi.callList(null,
                 Ini.SOMATIC_INI,
@@ -324,27 +320,34 @@ public class SnpCheckTest {
                 null,
                 null,
                 null,
-                null)).thenReturn(List.of(run(Ini.SOMATIC_INI).status(Status.VALIDATED).context("RESEARCH"),
-                run(Ini.SOMATIC_INI).status(Status.VALIDATED).context("SERVICES")));
-        victim.handle(stagedEvent(Context.RESEARCH));
+                null))
+                .thenReturn(
+                        List.of(
+                                run(Ini.SOMATIC_INI).status(Status.VALIDATED).context(researchPipelineContext.name()),
+                                run(Ini.SOMATIC_INI).status(Status.VALIDATED).context("SERVICES")
+                        )
+                );
+        victim.handle(stagedEvent(researchPipelineContext));
         var validatedEvents = eventBuilder.getQueueBuffer(new PipelineValidated.EventDescriptor());
         assertThat(validatedEvents).hasSize(1);
         var validated = validatedEvents.get(0);
-        assertWrappedOriginalEvent(validated, Context.RESEARCH);
+        assertWrappedOriginalEvent(validated, researchPipelineContext);
         assertValidatedInApi();
     }
 
-    @Test
-    public void illegalStateOnResearchRunsWithoutDiagnosticRun() {
+    @ParameterizedTest
+    @EnumSource(value = Pipeline.Context.class, names = {"RESEARCH", "RESEARCH2"})
+    public void illegalStateOnResearchRunsWithoutDiagnosticRun(Pipeline.Context researchPipelineContext) {
         when(runApi.get(run.getId())).thenReturn(run);
         when(runApi.callList(null, Ini.SOMATIC_INI, SET_ID, null, null, null, null, null, null)).thenReturn(Collections.emptyList());
-        assertThrows(IllegalStateException.class, () -> victim.handle(stagedEvent(Context.RESEARCH)));
+        assertThrows(IllegalStateException.class, () -> victim.handle(stagedEvent(researchPipelineContext)));
         var aquaEvents = eventBuilder.getQueueBuffer(new AquaEvent.EventDescriptor());
         assertThat(aquaEvents).isEmpty();
     }
 
-    @Test
-    public void errorOnResearchRunsWithNoDiagnosticRunSnpcheck() {
+    @ParameterizedTest
+    @EnumSource(value = Pipeline.Context.class, names = {"RESEARCH", "RESEARCH2"})
+    public void errorOnResearchRunsWithNoDiagnosticRunSnpcheck(Pipeline.Context researchPipelineContext) {
         when(runApi.get(run.getId())).thenReturn(run);
         when(runApi.callList(null,
                 Ini.SOMATIC_INI,
@@ -354,9 +357,14 @@ public class SnpCheckTest {
                 null,
                 null,
                 null,
-                null)).thenReturn(List.of(run(Ini.SOMATIC_INI).status(Status.VALIDATED).context("RESEARCH"),
-                run(Ini.SOMATIC_INI).context("DIAGNOSTIC").failure(new RunFailure().type(TypeEnum.QCFAILURE).source("SnpCheck"))));
-        victim.handle(stagedEvent(Context.RESEARCH));
+                null))
+                .thenReturn(
+                        List.of(
+                                run(Ini.SOMATIC_INI).status(Status.VALIDATED).context(researchPipelineContext.name()),
+                                run(Ini.SOMATIC_INI).context("DIAGNOSTIC").failure(new RunFailure().type(TypeEnum.QCFAILURE).source("SnpCheck"))
+                        )
+                );
+        victim.handle(stagedEvent(researchPipelineContext));
         var validatedEvents = eventBuilder.getQueueBuffer(new PipelineValidated.EventDescriptor());
         assertThat(validatedEvents).isEmpty();
         var aquaEvents = eventBuilder.getQueueBuffer(new AquaEvent.EventDescriptor());
@@ -367,8 +375,9 @@ public class SnpCheckTest {
         assertThat(event.snpCheckResult()).isEqualTo("FAIL");
     }
 
-    @Test
-    public void passesThruWhenFlagSet() {
+    @ParameterizedTest
+    @EnumSource(value = Pipeline.Context.class, names = {"RESEARCH", "RESEARCH2"})
+    public void passesThruWhenFlagSet(Pipeline.Context researchPipelineContext) {
         victim = new SnpCheck(runApi,
                 sampleApi,
                 pipelineStorage,
@@ -380,11 +389,11 @@ public class SnpCheckTest {
                 true,
                 false);
         when(runApi.get(run.getId())).thenReturn(run.ini(Ini.RERUN_INI.getValue()));
-        victim.handle(stagedEvent(Context.RESEARCH));
+        victim.handle(stagedEvent(researchPipelineContext));
         var validatedEvents = eventBuilder.getQueueBuffer(new PipelineValidated.EventDescriptor());
         assertThat(validatedEvents).hasSize(1);
         var validated = validatedEvents.get(0);
-        assertWrappedOriginalEvent(validated, Context.RESEARCH);
+        assertWrappedOriginalEvent(validated, researchPipelineContext);
         assertValidatedInApi();
     }
 
