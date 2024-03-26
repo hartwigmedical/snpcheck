@@ -96,7 +96,8 @@ public class SnpCheckTest {
                 .id(RUN_ID)
                 .set(new RunSet().name("set").refSample("ref").id(SET_ID))
                 .ini(somaticIni.getValue())
-                .status(Status.FINISHED);
+                .status(Status.FINISHED)
+                .endTime("2024-01-02T00:00:00Z");
     }
 
     @Test
@@ -264,12 +265,10 @@ public class SnpCheckTest {
                 null,
                 null,
                 null))
-                .thenReturn(
-                        List.of(
-                                run(Ini.SOMATIC_INI).status(Status.VALIDATED).context(researchPipelineContext.name()),
-                                run(Ini.SOMATIC_INI).status(Status.VALIDATED).context("DIAGNOSTIC")
-                        )
-                );
+                .thenReturn(List.of(
+                        run(Ini.SOMATIC_INI).context(researchPipelineContext.name()),
+                        run(Ini.SOMATIC_INI).status(Status.VALIDATED).context("DIAGNOSTIC")
+                ));
         victim.handle(stagedEvent(researchPipelineContext));
         var validatedEvents = eventBuilder.getQueueBuffer(new PipelineValidated.EventDescriptor());
         assertThat(validatedEvents).hasSize(1);
@@ -291,12 +290,10 @@ public class SnpCheckTest {
                 null,
                 null,
                 null))
-                .thenReturn(
-                        List.of(
-                                run(Ini.SOMATIC_INI).status(Status.VALIDATED).context(researchPipelineContext.name()),
-                                run(Ini.SOMATIC_INI).status(Status.VALIDATED).context("DIAGNOSTIC")
-                        )
-                );
+                .thenReturn(List.of(
+                        run(Ini.SOMATIC_INI).context(researchPipelineContext.name()),
+                        run(Ini.SOMATIC_INI).status(Status.VALIDATED).context("DIAGNOSTIC")
+                ));
         victim.handle(stagedEvent(researchPipelineContext));
         var aquaEvents = eventBuilder.getQueueBuffer(new AquaEvent.EventDescriptor());
         assertThat(aquaEvents).hasSize(1);
@@ -321,17 +318,33 @@ public class SnpCheckTest {
                 null,
                 null,
                 null))
-                .thenReturn(
-                        List.of(
-                                run(Ini.SOMATIC_INI).status(Status.VALIDATED).context(researchPipelineContext.name()),
-                                run(Ini.SOMATIC_INI).status(Status.VALIDATED).context("SERVICES")
-                        )
-                );
+                .thenReturn(List.of(
+                        run(Ini.SOMATIC_INI).context(researchPipelineContext.name()),
+                        run(Ini.SOMATIC_INI).status(Status.VALIDATED).context("SERVICES")
+                ));
         victim.handle(stagedEvent(researchPipelineContext));
         var validatedEvents = eventBuilder.getQueueBuffer(new PipelineValidated.EventDescriptor());
         assertThat(validatedEvents).hasSize(1);
         var validated = validatedEvents.get(0);
         assertWrappedOriginalEvent(validated, researchPipelineContext);
+        assertValidatedInApi();
+    }
+
+    @Test
+    public void validatesResearchRunWithDiagnosticSnpcheckAndTwoProcessingRuns() {
+        when(runApi.get(run.getId())).thenReturn(run);
+        when(runApi.callList(null, Ini.SOMATIC_INI, SET_ID, null, null, null, null, null, null))
+                .thenReturn(List.of(
+                        run(Ini.SOMATIC_INI).status(Status.VALIDATED).context("DIAGNOSTIC"),
+                        run(Ini.SOMATIC_INI).context("RESEARCH"),
+                        run(Ini.SOMATIC_INI).status(Status.PROCESSING).context("PLATINUM").endTime(null),
+                        run(Ini.SOMATIC_INI).status(Status.PROCESSING).context("RESEARCH2").endTime(null)
+                ));
+        victim.handle(stagedEvent(Context.RESEARCH));
+        var validatedEvents = eventBuilder.getQueueBuffer(new PipelineValidated.EventDescriptor());
+        assertThat(validatedEvents).hasSize(1);
+        var validated = validatedEvents.get(0);
+        assertWrappedOriginalEvent(validated, Context.RESEARCH);
         assertValidatedInApi();
     }
 
@@ -358,12 +371,10 @@ public class SnpCheckTest {
                 null,
                 null,
                 null))
-                .thenReturn(
-                        List.of(
-                                run(Ini.SOMATIC_INI).status(Status.VALIDATED).context(researchPipelineContext.name()),
-                                run(Ini.SOMATIC_INI).context("DIAGNOSTIC").failure(new RunFailure().type(TypeEnum.QCFAILURE).source("SnpCheck"))
-                        )
-                );
+                .thenReturn(List.of(
+                        run(Ini.SOMATIC_INI).context(researchPipelineContext.name()),
+                        run(Ini.SOMATIC_INI).context("DIAGNOSTIC").status(Status.FAILED).failure(new RunFailure().type(TypeEnum.QCFAILURE).source("SnpCheck"))
+                ));
         victim.handle(stagedEvent(researchPipelineContext));
         var validatedEvents = eventBuilder.getQueueBuffer(new PipelineValidated.EventDescriptor());
         assertThat(validatedEvents).isEmpty();

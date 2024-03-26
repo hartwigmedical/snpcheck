@@ -137,7 +137,7 @@ public class SnpCheck implements EventHandler<PipelineComplete> {
     private void validateResearchWhenSourceRunValidated(final PipelineComplete event, final Run run) {
         Run mostRecentDiagnostic = runs.callList(null, Ini.SOMATIC_INI, run.getSet().getId(), null, null, null, null, null, null)
                 .stream()
-                .filter(r -> !isResearchContext(Pipeline.Context.valueOf(r.getContext())))
+                .filter(r -> !isResearchContext(Pipeline.Context.valueOf(r.getContext())) && r.getEndTime() != null)
                 .max(Comparator.comparing(Run::getEndTime))
                 .orElseThrow(() -> new IllegalStateException(String.format(
                         "Research run [%s] for set [%s] had no diagnostic run. Cannot validate.",
