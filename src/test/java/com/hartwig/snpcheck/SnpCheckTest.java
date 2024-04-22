@@ -1,39 +1,57 @@
 package com.hartwig.snpcheck;
 
+import static java.util.Collections.emptyList;
+import static java.util.Collections.singletonList;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.anyBoolean;
+import static org.mockito.Mockito.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import java.util.Collections;
+import java.util.List;
+
 import com.google.api.gax.paging.Page;
 import com.google.cloud.storage.Blob;
 import com.google.cloud.storage.Bucket;
 import com.google.cloud.storage.Storage;
 import com.hartwig.api.RunApi;
 import com.hartwig.api.SampleApi;
-import com.hartwig.api.model.*;
+import com.hartwig.api.model.Ini;
+import com.hartwig.api.model.Run;
+import com.hartwig.api.model.RunFailure;
 import com.hartwig.api.model.RunFailure.TypeEnum;
+import com.hartwig.api.model.RunSet;
+import com.hartwig.api.model.Sample;
+import com.hartwig.api.model.SampleType;
+import com.hartwig.api.model.Status;
+import com.hartwig.api.model.UpdateRun;
 import com.hartwig.events.EventPublisher;
 import com.hartwig.events.aqua.SnpCheckCompletedEvent;
 import com.hartwig.events.aqua.model.AquaEvent;
 import com.hartwig.events.aqua.model.AquaEventType;
 import com.hartwig.events.local.LocalEventBuilder;
-import com.hartwig.events.pipeline.*;
+import com.hartwig.events.pipeline.Analysis;
 import com.hartwig.events.pipeline.Analysis.Molecule;
 import com.hartwig.events.pipeline.Analysis.Type;
+import com.hartwig.events.pipeline.AnalysisOutputBlob;
+import com.hartwig.events.pipeline.Pipeline;
 import com.hartwig.events.pipeline.Pipeline.Context;
+import com.hartwig.events.pipeline.PipelineComplete;
+import com.hartwig.events.pipeline.PipelineValidated;
 import com.hartwig.events.turquoise.TurquoiseEvent;
 import com.hartwig.snpcheck.VcfComparison.Result;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.ArgumentCaptor;
-
-import java.util.Collections;
-import java.util.List;
-
-import static java.util.Collections.emptyList;
-import static java.util.Collections.singletonList;
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
 
 public class SnpCheckTest {
 
@@ -253,7 +271,8 @@ public class SnpCheckTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = Pipeline.Context.class, names = {"RESEARCH", "RESEARCH2"})
+    @EnumSource(value = Pipeline.Context.class,
+                names = { "RESEARCH", "RESEARCH2" })
     public void validatesResearchRunsWithDiagnosticSnpcheck(Pipeline.Context researchPipelineContext) {
         when(runApi.get(run.getId())).thenReturn(run);
         when(runApi.callList(null,
@@ -264,11 +283,8 @@ public class SnpCheckTest {
                 null,
                 null,
                 null,
-                null))
-                .thenReturn(List.of(
-                        run(Ini.SOMATIC_INI).context(researchPipelineContext.name()),
-                        run(Ini.SOMATIC_INI).status(Status.VALIDATED).context("DIAGNOSTIC")
-                ));
+                null)).thenReturn(List.of(run(Ini.SOMATIC_INI).context(researchPipelineContext.name()),
+                run(Ini.SOMATIC_INI).status(Status.VALIDATED).context("DIAGNOSTIC")));
         victim.handle(stagedEvent(researchPipelineContext));
         var validatedEvents = eventBuilder.getQueueBuffer(new PipelineValidated.EventDescriptor());
         assertThat(validatedEvents).hasSize(1);
@@ -278,7 +294,8 @@ public class SnpCheckTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = Pipeline.Context.class, names = {"RESEARCH", "RESEARCH2"})
+    @EnumSource(value = Pipeline.Context.class,
+                names = { "RESEARCH", "RESEARCH2" })
     public void publishesAquaEventOnResearchCompletion(Pipeline.Context researchPipelineContext) {
         when(runApi.get(run.getId())).thenReturn(run);
         when(runApi.callList(null,
@@ -289,11 +306,8 @@ public class SnpCheckTest {
                 null,
                 null,
                 null,
-                null))
-                .thenReturn(List.of(
-                        run(Ini.SOMATIC_INI).context(researchPipelineContext.name()),
-                        run(Ini.SOMATIC_INI).status(Status.VALIDATED).context("DIAGNOSTIC")
-                ));
+                null)).thenReturn(List.of(run(Ini.SOMATIC_INI).context(researchPipelineContext.name()),
+                run(Ini.SOMATIC_INI).status(Status.VALIDATED).context("DIAGNOSTIC")));
         victim.handle(stagedEvent(researchPipelineContext));
         var aquaEvents = eventBuilder.getQueueBuffer(new AquaEvent.EventDescriptor());
         assertThat(aquaEvents).hasSize(1);
@@ -306,7 +320,8 @@ public class SnpCheckTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = Pipeline.Context.class, names = {"RESEARCH", "RESEARCH2"})
+    @EnumSource(value = Pipeline.Context.class,
+                names = { "RESEARCH", "RESEARCH2" })
     public void validatesResearchRunsWithServicesSnpcheck(Pipeline.Context researchPipelineContext) {
         when(runApi.get(run.getId())).thenReturn(run);
         when(runApi.callList(null,
@@ -317,11 +332,8 @@ public class SnpCheckTest {
                 null,
                 null,
                 null,
-                null))
-                .thenReturn(List.of(
-                        run(Ini.SOMATIC_INI).context(researchPipelineContext.name()),
-                        run(Ini.SOMATIC_INI).status(Status.VALIDATED).context("SERVICES")
-                ));
+                null)).thenReturn(List.of(run(Ini.SOMATIC_INI).context(researchPipelineContext.name()),
+                run(Ini.SOMATIC_INI).status(Status.VALIDATED).context("SERVICES")));
         victim.handle(stagedEvent(researchPipelineContext));
         var validatedEvents = eventBuilder.getQueueBuffer(new PipelineValidated.EventDescriptor());
         assertThat(validatedEvents).hasSize(1);
@@ -333,13 +345,18 @@ public class SnpCheckTest {
     @Test
     public void validatesResearchRunWithDiagnosticSnpcheckAndTwoProcessingRuns() {
         when(runApi.get(run.getId())).thenReturn(run);
-        when(runApi.callList(null, Ini.SOMATIC_INI, SET_ID, null, null, null, null, null, null))
-                .thenReturn(List.of(
-                        run(Ini.SOMATIC_INI).status(Status.VALIDATED).context("DIAGNOSTIC"),
-                        run(Ini.SOMATIC_INI).context("RESEARCH"),
-                        run(Ini.SOMATIC_INI).status(Status.PROCESSING).context("PLATINUM").endTime(null),
-                        run(Ini.SOMATIC_INI).status(Status.PROCESSING).context("RESEARCH2").endTime(null)
-                ));
+        when(runApi.callList(null,
+                Ini.SOMATIC_INI,
+                SET_ID,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null)).thenReturn(List.of(run(Ini.SOMATIC_INI).status(Status.VALIDATED).context("DIAGNOSTIC"),
+                run(Ini.SOMATIC_INI).context("RESEARCH"),
+                run(Ini.SOMATIC_INI).status(Status.PROCESSING).context("PLATINUM").endTime(null),
+                run(Ini.SOMATIC_INI).status(Status.PROCESSING).context("RESEARCH2").endTime(null)));
         victim.handle(stagedEvent(Context.RESEARCH));
         var validatedEvents = eventBuilder.getQueueBuffer(new PipelineValidated.EventDescriptor());
         assertThat(validatedEvents).hasSize(1);
@@ -349,7 +366,8 @@ public class SnpCheckTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = Pipeline.Context.class, names = {"RESEARCH", "RESEARCH2"})
+    @EnumSource(value = Pipeline.Context.class,
+                names = { "RESEARCH", "RESEARCH2" })
     public void illegalStateOnResearchRunsWithoutDiagnosticRun(Pipeline.Context researchPipelineContext) {
         when(runApi.get(run.getId())).thenReturn(run);
         when(runApi.callList(null, Ini.SOMATIC_INI, SET_ID, null, null, null, null, null, null)).thenReturn(Collections.emptyList());
@@ -359,7 +377,8 @@ public class SnpCheckTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = Pipeline.Context.class, names = {"RESEARCH", "RESEARCH2"})
+    @EnumSource(value = Pipeline.Context.class,
+                names = { "RESEARCH", "RESEARCH2" })
     public void errorOnResearchRunsWithNoDiagnosticRunSnpcheck(Pipeline.Context researchPipelineContext) {
         when(runApi.get(run.getId())).thenReturn(run);
         when(runApi.callList(null,
@@ -370,11 +389,10 @@ public class SnpCheckTest {
                 null,
                 null,
                 null,
-                null))
-                .thenReturn(List.of(
-                        run(Ini.SOMATIC_INI).context(researchPipelineContext.name()),
-                        run(Ini.SOMATIC_INI).context("DIAGNOSTIC").status(Status.FAILED).failure(new RunFailure().type(TypeEnum.QCFAILURE).source("SnpCheck"))
-                ));
+                null)).thenReturn(List.of(run(Ini.SOMATIC_INI).context(researchPipelineContext.name()),
+                run(Ini.SOMATIC_INI).context("DIAGNOSTIC")
+                        .status(Status.FAILED)
+                        .failure(new RunFailure().type(TypeEnum.QCFAILURE).source("SnpCheck"))));
         victim.handle(stagedEvent(researchPipelineContext));
         var validatedEvents = eventBuilder.getQueueBuffer(new PipelineValidated.EventDescriptor());
         assertThat(validatedEvents).isEmpty();
@@ -387,7 +405,8 @@ public class SnpCheckTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = Pipeline.Context.class, names = {"RESEARCH", "RESEARCH2"})
+    @EnumSource(value = Pipeline.Context.class,
+                names = { "RESEARCH", "RESEARCH2" })
     public void passesThruWhenFlagSet(Pipeline.Context researchPipelineContext) {
         victim = new SnpCheck(runApi,
                 sampleApi,
