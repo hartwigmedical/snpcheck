@@ -1,5 +1,9 @@
 package com.hartwig.snpcheck;
 
+import static com.hartwig.events.pipeline.Pipeline.Context.DIAGNOSTIC;
+import static com.hartwig.events.pipeline.Pipeline.Context.RESEARCH;
+import static com.hartwig.events.pipeline.Pipeline.Context.RESEARCH2;
+
 import java.time.Instant;
 import java.time.ZonedDateTime;
 import java.util.Collections;
@@ -81,12 +85,16 @@ public class SnpCheck implements EventHandler<PipelineComplete> {
             publishAndUpdateApiValidated(event, run);
         } else if (run.getIni().equals(Ini.SOMATIC_INI.getValue()) || run.getIni().equals(Ini.SINGLESAMPLE_INI.getValue())) {
             LOGGER.info("Received a SnpCheck candidate [{}] for run [{}]", run.getSet().getName(), run.getId());
-            if (event.pipeline().context().equals(Pipeline.Context.RESEARCH)) {
+            if (isResearchContext(event.pipeline().context())) {
                 validateResearchWhenSourceRunValidated(event, run);
             } else {
                 validateRunWithSnpcheck(event, run);
             }
         }
+    }
+
+    private static boolean isResearchContext(Pipeline.Context context) {
+        return context.equals(RESEARCH) || context.equals(RESEARCH2);
     }
 
     private void validateRunWithSnpcheck(final PipelineComplete event, final Run run) {
@@ -139,7 +147,7 @@ public class SnpCheck implements EventHandler<PipelineComplete> {
     private void validateResearchWhenSourceRunValidated(final PipelineComplete event, final Run run) {
         Run mostRecentDiagnostic = runs.callList(null, Ini.SOMATIC_INI, run.getSet().getId(), null, null, null, null, null, null)
                 .stream()
-                .filter(r -> !r.getContext().equals("RESEARCH"))
+                .filter(r -> !isResearchContext(Pipeline.Context.valueOf(r.getContext())) && r.getEndTime() != null)
                 .max(Comparator.comparing(Run::getEndTime))
                 .orElseThrow(() -> new IllegalStateException(String.format(
                         "Research run [%s] for set [%s] had no diagnostic run. Cannot validate.",
@@ -196,7 +204,7 @@ public class SnpCheck implements EventHandler<PipelineComplete> {
     }
 
     private VcfComparison.Result doComparison(final Run run, final Sample refSample, final Blob valVcf) {
-        boolean isDiagnosticRun = Pipeline.Context.DIAGNOSTIC.toString().equalsIgnoreCase(run.getContext());
+        boolean isDiagnosticRun = DIAGNOSTIC.name().equalsIgnoreCase(run.getContext());
         String refSampleAnalysisName = isDiagnosticRun ? refSample.getReportingId() : refSample.getName();
         String refVcfPath = String.format("%s/%s/snp_genotype/snp_genotype_output.vcf", run.getSet().getName(), refSampleAnalysisName);
         Optional<Blob> maybeRefVcf =
