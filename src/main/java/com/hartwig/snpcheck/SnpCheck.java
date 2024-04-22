@@ -93,7 +93,7 @@ public class SnpCheck implements EventHandler<PipelineComplete> {
         }
     }
 
-    private boolean isResearchContext(Pipeline.Context context) {
+    private static boolean isResearchContext(Pipeline.Context context) {
         return context.equals(RESEARCH) || context.equals(RESEARCH2);
     }
 
