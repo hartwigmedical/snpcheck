@@ -1,26 +1,8 @@
 package com.hartwig.snpcheck;
 
-import com.google.api.gax.paging.Page;
-import com.google.cloud.storage.Blob;
-import com.google.cloud.storage.Storage;
-import com.hartwig.api.RunApi;
-import com.hartwig.api.SampleApi;
-import com.hartwig.api.helpers.OnlyOne;
-import com.hartwig.api.model.*;
-import com.hartwig.api.model.RunFailure.TypeEnum;
-import com.hartwig.events.EventHandler;
-import com.hartwig.events.EventPublisher;
-import com.hartwig.events.aqua.SnpCheckCompletedEvent;
-import com.hartwig.events.aqua.model.AquaEvent;
-import com.hartwig.events.pipeline.Pipeline;
-import com.hartwig.events.pipeline.PipelineComplete;
-import com.hartwig.events.pipeline.PipelineValidated;
-import com.hartwig.events.turquoise.TurquoiseEvent;
-import com.hartwig.events.turquoise.model.Label;
-import com.hartwig.events.turquoise.model.Subject;
-import com.hartwig.snpcheck.VcfComparison.Result;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import static com.hartwig.events.pipeline.Pipeline.Context.DIAGNOSTIC;
+import static com.hartwig.events.pipeline.Pipeline.Context.RESEARCH;
+import static com.hartwig.events.pipeline.Pipeline.Context.RESEARCH2;
 
 import java.time.Instant;
 import java.time.ZonedDateTime;
@@ -32,7 +14,35 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.StreamSupport;
 
-import static com.hartwig.events.pipeline.Pipeline.Context.*;
+import com.google.api.gax.paging.Page;
+import com.google.cloud.storage.Blob;
+import com.google.cloud.storage.Storage;
+import com.hartwig.api.RunApi;
+import com.hartwig.api.SampleApi;
+import com.hartwig.api.helpers.OnlyOne;
+import com.hartwig.api.model.Ini;
+import com.hartwig.api.model.Run;
+import com.hartwig.api.model.RunFailure;
+import com.hartwig.api.model.RunFailure.TypeEnum;
+import com.hartwig.api.model.RunSet;
+import com.hartwig.api.model.Sample;
+import com.hartwig.api.model.SampleType;
+import com.hartwig.api.model.Status;
+import com.hartwig.api.model.UpdateRun;
+import com.hartwig.events.EventHandler;
+import com.hartwig.events.EventPublisher;
+import com.hartwig.events.aqua.SnpCheckCompletedEvent;
+import com.hartwig.events.aqua.model.AquaEvent;
+import com.hartwig.events.pipeline.Pipeline;
+import com.hartwig.events.pipeline.PipelineComplete;
+import com.hartwig.events.pipeline.PipelineValidated;
+import com.hartwig.events.turquoise.TurquoiseEvent;
+import com.hartwig.events.turquoise.model.Label;
+import com.hartwig.events.turquoise.model.Subject;
+import com.hartwig.snpcheck.VcfComparison.Result;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class SnpCheck implements EventHandler<PipelineComplete> {
 
