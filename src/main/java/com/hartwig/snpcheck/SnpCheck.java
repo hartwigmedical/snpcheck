@@ -80,21 +80,13 @@ public class SnpCheck implements EventHandler<PipelineComplete> {
 
     public void handle(final PipelineComplete event) {
         Run run = runs.get(event.pipeline().runId());
-        if (passthru) {
+        if (passthru || event.pipeline().context() == RESEARCH || event.pipeline().context() == RESEARCH2) {
             LOGGER.info("Passing through event for sample [{}]", event.pipeline().sample());
             publishAndUpdateApiValidated(event, run);
         } else if (run.getIni().equals(Ini.SOMATIC_INI.getValue()) || run.getIni().equals(Ini.SINGLESAMPLE_INI.getValue())) {
             LOGGER.info("Received a SnpCheck candidate [{}] for run [{}]", run.getSet().getName(), run.getId());
-            if (isResearchContext(event.pipeline().context())) {
-                validateResearchWhenSourceRunValidated(event, run);
-            } else {
-                validateRunWithSnpcheck(event, run);
-            }
+            validateRunWithSnpcheck(event, run);
         }
-    }
-
-    private static boolean isResearchContext(Pipeline.Context context) {
-        return context.equals(RESEARCH) || context.equals(RESEARCH2);
     }
 
     private void validateRunWithSnpcheck(final PipelineComplete event, final Run run) {
@@ -144,46 +136,9 @@ public class SnpCheck implements EventHandler<PipelineComplete> {
                 .build());
     }
 
-    private void validateResearchWhenSourceRunValidated(final PipelineComplete event, final Run run) {
-        Run mostRecentDiagnostic = runs.callList(null, Ini.SOMATIC_INI, run.getSet().getId(), null, null, null, null, null, null)
-                .stream()
-                .filter(r -> !isResearchContext(Pipeline.Context.valueOf(r.getContext())) && r.getEndTime() != null)
-                .max(Comparator.comparing(Run::getEndTime))
-                .orElseThrow(() -> new IllegalStateException(String.format(
-                        "Research run [%s] for set [%s] had no diagnostic run. Cannot validate.",
-                        run.getId(),
-                        run.getSet().getName())));
-        var failedSnpcheck = sourceRunHasFailedSnpcheck(mostRecentDiagnostic);
-        if (failedSnpcheck) {
-            LOGGER.warn("Diagnostic run [{}] for research run [{}], for set [{}] has failed snpcheck. Cannot validate.",
-                    mostRecentDiagnostic.getId(),
-                    run.getId(),
-                    run.getSet().getName());
-        } else {
-            LOGGER.info("Validating research run [{}], set [{}] as the diagnostic run passed snpcheck",
-                    run.getId(),
-                    run.getSet().getName());
-            publishAndUpdateApiValidated(event, run);
-        }
-        var barcode = findBarcode(run);
-        var result = failedSnpcheck ? Result.FAIL : Result.PASS;
-        var aquaEvent = SnpCheckCompletedEvent.builder()
-                .timestamp(Instant.now())
-                .barcode(barcode)
-                .snpCheckResult(result.name())
-                .ini(run.getIni())
-                .context(event.pipeline().context())
-                .build();
-        aquaPublisher.publish(aquaEvent);
-    }
-
     private void publishAndUpdateApiValidated(final PipelineComplete event, final Run run) {
         publishValidated(event);
         apiValidated(run);
-    }
-
-    private static boolean sourceRunHasFailedSnpcheck(final Run source) {
-        return source.getFailure() != null && source.getFailure().getSource().equals("SnpCheck");
     }
 
     private void publishValidated(final PipelineComplete event) {
@@ -236,16 +191,8 @@ public class SnpCheck implements EventHandler<PipelineComplete> {
         runs.update(run.getId(), new UpdateRun().status(Status.VALIDATED));
     }
 
-    private boolean runFailedQc(final Run run) {
+    private static boolean runFailedQc(final Run run) {
         return run.getStatus() == Status.FAILED && (run.getFailure() != null && run.getFailure().getType() == TypeEnum.QCFAILURE);
-    }
-
-    private String findBarcode(Run run) {
-        var runSet = run.getSet();
-        return findSample(runSet, SampleType.TUMOR).or(() -> findSample(runSet, SampleType.REF))
-                .orElseThrow(() -> new IllegalStateException(String.format("Set [%s] had no samples available in the API",
-                        runSet.getName())))
-                .getBarcode();
     }
 
     private Optional<Sample> findSample(RunSet set, SampleType type) {
