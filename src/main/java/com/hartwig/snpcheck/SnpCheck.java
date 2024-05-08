@@ -80,21 +80,17 @@ public class SnpCheck implements EventHandler<PipelineComplete> {
 
     public void handle(final PipelineComplete event) {
         Run run = runs.get(event.pipeline().runId());
-        if (passthru) {
+        if (passthru || event.pipeline().context() == RESEARCH2) {
             LOGGER.info("Passing through event for sample [{}]", event.pipeline().sample());
             publishAndUpdateApiValidated(event, run);
         } else if (run.getIni().equals(Ini.SOMATIC_INI.getValue()) || run.getIni().equals(Ini.SINGLESAMPLE_INI.getValue())) {
             LOGGER.info("Received a SnpCheck candidate [{}] for run [{}]", run.getSet().getName(), run.getId());
-            if (isResearchContext(event.pipeline().context())) {
+            if (event.pipeline().context() == RESEARCH) {
                 validateResearchWhenSourceRunValidated(event, run);
             } else {
                 validateRunWithSnpcheck(event, run);
             }
         }
-    }
-
-    private static boolean isResearchContext(Pipeline.Context context) {
-        return context.equals(RESEARCH) || context.equals(RESEARCH2);
     }
 
     private void validateRunWithSnpcheck(final PipelineComplete event, final Run run) {
@@ -147,7 +143,7 @@ public class SnpCheck implements EventHandler<PipelineComplete> {
     private void validateResearchWhenSourceRunValidated(final PipelineComplete event, final Run run) {
         Run mostRecentDiagnostic = runs.callList(null, Ini.SOMATIC_INI, run.getSet().getId(), null, null, null, null, null, null)
                 .stream()
-                .filter(r -> !isResearchContext(Pipeline.Context.valueOf(r.getContext())) && r.getEndTime() != null)
+                .filter(r -> isNotResearchContext(r) && r.getEndTime() != null)
                 .max(Comparator.comparing(Run::getEndTime))
                 .orElseThrow(() -> new IllegalStateException(String.format(
                         "Research run [%s] for set [%s] had no diagnostic run. Cannot validate.",
@@ -175,6 +171,11 @@ public class SnpCheck implements EventHandler<PipelineComplete> {
                 .context(event.pipeline().context())
                 .build();
         aquaPublisher.publish(aquaEvent);
+    }
+
+    private static boolean isNotResearchContext(Run run) {
+        var context = Pipeline.Context.valueOf(run.getContext());
+        return context != RESEARCH && context != RESEARCH2;
     }
 
     private void publishAndUpdateApiValidated(final PipelineComplete event, final Run run) {
