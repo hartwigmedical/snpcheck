@@ -12,7 +12,7 @@ steps:
         name: 'm2_cache'
 
   - id: 'Build application'
-    name: 'eu.gcr.io/hmf-build/maven:3.6.0-jdk-11-slim-libarray-diff-perl'
+    name: 'europe-west4-docker.pkg.dev/hmf-build/hmf-docker/maven:3.6.0-jdk-11-slim-libarray-diff-perl'
     entrypoint: 'mvn'
     args:
       - 'install'
@@ -36,9 +36,9 @@ steps:
       - path: '/cache/.m2'
         name: 'm2_cache'
   - id: 'Publish docker image'
-    name: 'eu.gcr.io/hmf-build/docker-tag'
-    args: ['eu.gcr.io/hmf-build/snpcheck', '$TAG_NAME']
+    name: 'europe-west4-docker.pkg.dev/hmf-build/hmf-docker/docker-tag'
+    args: ['europe-west4-docker.pkg.dev/hmf-build/hmf-docker/snpcheck', '$TAG_NAME']
 options:
   machineType: 'E2_HIGHCPU_8'
 images:
-  - eu.gcr.io/hmf-build/snpcheck
+  - europe-west4-docker.pkg.dev/hmf-build/hmf-docker/snpcheck
