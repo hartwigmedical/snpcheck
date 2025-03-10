@@ -9,6 +9,7 @@ import java.time.ZonedDateTime;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -172,7 +173,7 @@ public class SnpCheck implements EventHandler<PipelineComplete> {
             VcfComparison.Result result = vcfComparison.compare(run, refVcf, valVcf, alwaysPass);
             if (result.equals(VcfComparison.Result.PASS)) {
                 LOGGER.info("Set [{}] was successfully snpchecked.", run.getSet().getName());
-                if (!runFailedQc(run)) {
+                if (!runFailedQcHealthCheck(run)) {
                     apiValidated(run);
                 }
             } else {
@@ -194,6 +195,11 @@ public class SnpCheck implements EventHandler<PipelineComplete> {
     private static boolean runFailedQc(final Run run) {
         return run.getStatus() == Status.FAILED && (run.getFailure() != null && run.getFailure().getType() == TypeEnum.QCFAILURE);
     }
+
+    private static boolean runFailedQcHealthCheck(Run run) {
+        return runFailedQc(run) && Objects.requireNonNull(run.getFailure()).getSource().equals("HealthCheck");
+    }
+
 
     private Optional<Sample> findSample(RunSet set, SampleType type) {
         List<Sample> samples = sampleApi.callList(null, null, null, set.getId(), type, null, null);
