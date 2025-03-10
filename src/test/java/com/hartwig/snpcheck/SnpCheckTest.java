@@ -159,7 +159,34 @@ public class SnpCheckTest {
 
     @Test
     public void eventPublishedButRunStaysFailedOnSnpCheckSuccessAfterHealthcheckFailure() {
-        setupHealthcheckPassAndVerifyNoApiUpdateButEvent(stagedEvent(Context.DIAGNOSTIC));
+        var event = stagedEvent(Context.DIAGNOSTIC);
+        run = run.status(Status.FAILED).failure(new RunFailure().type(TypeEnum.QCFAILURE).source("HealthCheck"));
+        setupValidationVcfs(Result.PASS, run, BARCODE);
+
+        // act
+        victim.handle(event);
+
+        verify(runApi, never()).update(any(), any());
+        var validatedEvents = eventBuilder.getQueueBuffer(new PipelineValidated.EventDescriptor());
+        assertThat(validatedEvents).hasSize(1);
+        var validated = validatedEvents.get(0);
+        assertWrappedOriginalEvent(validated, Context.DIAGNOSTIC);
+    }
+
+    @Test
+    public void eventPublishedAndRunIsValidatedOnSnpCheckSuccessAfterSnpCheckFailure() {
+        var event = stagedEvent(Context.DIAGNOSTIC);
+        run = run.status(Status.FAILED).failure(new RunFailure().type(TypeEnum.QCFAILURE).source("SnpCheck"));
+        setupValidationVcfs(Result.PASS, run, BARCODE);
+
+        // act
+        victim.handle(event);
+
+        verify(runApi).update(run.getId(), new UpdateRun().status(Status.VALIDATED).failure(null));
+        var validatedEvents = eventBuilder.getQueueBuffer(new PipelineValidated.EventDescriptor());
+        assertThat(validatedEvents).hasSize(1);
+        var validated = validatedEvents.get(0);
+        assertWrappedOriginalEvent(validated, Context.DIAGNOSTIC);
     }
 
     @Test
@@ -375,24 +402,6 @@ public class SnpCheckTest {
         var validatedEvents = eventBuilder.getQueueBuffer(new PipelineValidated.EventDescriptor());
         assertThat(validatedEvents).isEmpty();
         verify(runApi).update(eq(RUN_ID), any(UpdateRun.class));
-    }
-
-    private void setupHealthcheckPassAndVerifyNoApiUpdateButEvent(PipelineComplete event) {
-        setupHealthcheckAndVerifyNoApiUpdateButEvent(event);
-    }
-
-    private void setupHealthcheckAndVerifyNoApiUpdateButEvent(PipelineComplete event) {
-        run = run.status(Status.FAILED).failure(new RunFailure().type(TypeEnum.QCFAILURE));
-        setupValidationVcfs(Result.PASS, run, BARCODE);
-
-        // act
-        victim.handle(event);
-
-        verify(runApi, never()).update(any(), any());
-        var validatedEvents = eventBuilder.getQueueBuffer(new PipelineValidated.EventDescriptor());
-        assertThat(validatedEvents).hasSize(1);
-        var validated = validatedEvents.get(0);
-        assertWrappedOriginalEvent(validated, Context.DIAGNOSTIC);
     }
 
     private void handleAndVerifyNoApiOrEventUpdates(PipelineComplete event) {
