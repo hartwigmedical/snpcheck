@@ -55,10 +55,6 @@ public class SnpCheckMain implements Callable<Integer> {
     @Override
     public Integer call() {
         try {
-            if (passthru && project.contains("prod")) {
-                LOGGER.error("Snpcheck does not allow configuring passthru on a production project.");
-                return 1;
-            }
             LOGGER.info("Snpcheck configured to alwaysPass={} mode.", alwaysPass);
             var pubsubEventBuilder = new PubsubEventBuilder();
             var publisher = pubsubEventBuilder.newPublisher(project, new PipelineValidated.EventDescriptor());
