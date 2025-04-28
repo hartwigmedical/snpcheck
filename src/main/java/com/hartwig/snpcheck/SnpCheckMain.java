@@ -2,7 +2,6 @@ package com.hartwig.snpcheck;
 
 import java.util.concurrent.Callable;
 
-import com.google.cloud.storage.StorageOptions;
 import com.hartwig.api.HmfApi;
 import com.hartwig.events.EventBuilder;
 import com.hartwig.events.EventPublisher;
@@ -32,11 +31,6 @@ public class SnpCheckMain implements Callable<Integer> {
     @CommandLine.Option(names = { "--aqua_project" })
     protected String aquaProject;
 
-    @CommandLine.Option(names = { "--snpcheck_bucket" },
-                        defaultValue = "hmf-snpcheck",
-                        description = "Bucket in which the snpcheck vcfs are uploaded")
-    private String snpcheckBucketName;
-
     @CommandLine.Option(names = { "--project" },
                         required = true,
                         description = "Project in which the snpcheck is running")
@@ -47,15 +41,16 @@ public class SnpCheckMain implements Callable<Integer> {
                         description = "Mark all events as validated without invoking the Perl script (contrast with --always-pass).")
     private boolean passthru;
 
-    @CommandLine.Option(names = { "--always_pass" },
-                        defaultValue = "false",
-                        description = "Invoke the Perl script to check the lab VCF exists but assume the contents is correct (contrast with --passthru).")
-    private boolean alwaysPass;
-
     @Override
     public Integer call() {
         try {
-            LOGGER.info("Snpcheck configured to alwaysPass={} mode.", alwaysPass);
+            if (passthru) {
+                LOGGER.info("Snpcheck configured in passthru mode.");
+                if (project.contains("prod")) {
+                    LOGGER.error("Snpcheck does not allow passthru on a production project.");
+                    return 1;
+                }
+            }
             var pubsubEventBuilder = new PubsubEventBuilder();
             var publisher = pubsubEventBuilder.newPublisher(project, new PipelineValidated.EventDescriptor());
             var subscriber = pubsubEventBuilder.newSubscriber(project, new PipelineComplete.EventDescriptor(), "snpcheck", 1, true);
@@ -66,16 +61,7 @@ public class SnpCheckMain implements Callable<Integer> {
                     ? EventBuilder.noopPublisher()
                     : pubsubEventBuilder.newPublisher(aquaProject, new AquaEvent.EventDescriptor());
             var api = HmfApi.create(apiUrl);
-            subscriber.subscribe(new SnpCheck(api.runs(),
-                    api.samples(),
-                    StorageOptions.getDefaultInstance().getService(),
-                    snpcheckBucketName,
-                    new PerlVcfComparison(),
-                    turquoisePublisher,
-                    aquaPublisher,
-                    publisher,
-                    passthru,
-                    alwaysPass));
+            subscriber.subscribe(new SnpCheck(api.runs(), api.samples(), turquoisePublisher, aquaPublisher, publisher, passthru));
             return 0;
         } catch (Exception e) {
             LOGGER.error("Exception while running snpcheck", e);

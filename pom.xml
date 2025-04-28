@@ -73,14 +73,5 @@
             <version>${app.hartwig-events.version}</version>
             <scope>test</scope>
         </dependency>
-
-        <dependency>
-            <groupId>com.google.cloud</groupId>
-            <artifactId>google-cloud-storage</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.immutables</groupId>
-            <artifactId>value</artifactId>
-        </dependency>
     </dependencies>
 </project>
