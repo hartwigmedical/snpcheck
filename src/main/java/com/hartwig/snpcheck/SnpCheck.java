@@ -88,7 +88,7 @@ public class SnpCheck implements EventHandler<PipelineComplete> {
             apiValidated(run);
         }
 
-        // Snpcheck used to compare the lab VCFs with the pipeline VCFs, but the lab discontinued this at 25-05-2025 in favor
+        // Snpcheck used to compare the lab VCFs with the pipeline VCFs, but the lab discontinued this at 25-04-2025 in favor
         // a check by the medical team based on Amber.
         //
         // But: snpcheck also acts as a filter for pipeline events: it would only publish pipeline.validated events for
